@@ -49,6 +49,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             CollectionAssert.AreEquivalent(new[] { Name + ".tar", Name + ".tar.sha256" }, Directory.GetFiles(this.StoreFolder).Select(Path.GetFileName).ToArray(), "no partial file left");
             CollectionAssert.AreEqual(new[] { Name }, (await store.ListAsync()).ToArray());
             Assert.AreEqual("abc123", await store.GetSha256Async(Name));
+            Assert.AreEqual("abc123  " + Name + ".tar\n", File.ReadAllText(Path.Combine(this.StoreFolder, Name + ".tar.sha256")), "as sha256sum writes it");
             using(Stream tar = await store.OpenReadAsync(Name))
             using(MemoryStream bytes = new MemoryStream())
             {
@@ -91,6 +92,19 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             await store.PutAsync(Name, this.WriteStagedTar(1), "abc");
 
             CollectionAssert.AreEquivalent(new[] { Name + ".tar", Name + ".tar.sha256" }, Directory.GetFiles(this.StoreFolder).Select(Path.GetFileName).ToArray());
+        }
+
+        [TestMethod]
+        [DataRow("abc123", DisplayName = "the hash alone")]
+        [DataRow("abc123  20261119T021530.tar\n", DisplayName = "as sha256sum writes it")]
+        [DataRow("abc123 *20261119T021530.tar\r\n", DisplayName = "sha256sum's binary mode, CRLF")]
+        public async Task GetSha256_HashFileInEitherFormat_GivesTheHash(string content)
+        {
+            Directory.CreateDirectory(this.StoreFolder);
+            File.WriteAllBytes(Path.Combine(this.StoreFolder, Name + ".tar"), new byte[] { 1 });
+            File.WriteAllText(Path.Combine(this.StoreFolder, Name + ".tar.sha256"), content);
+
+            Assert.AreEqual("abc123", await this.CreateStore().GetSha256Async(Name));
         }
 
         [TestMethod]

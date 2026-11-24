@@ -11,7 +11,8 @@ using Databento.CSharpApiClient.Caching.Backup;
 namespace Databento.CSharpApiClient.Caching
 {
     /// <summary>
-    /// Keeps the backups in a local folder as <c>&lt;name&gt;.tar</c> with its hash in <c>&lt;name&gt;.tar.sha256</c>. A backup comes in
+    /// Keeps the backups in a local folder as <c>&lt;name&gt;.tar</c> with its hash in <c>&lt;name&gt;.tar.sha256</c>, in the format
+    /// <c>sha256sum -c</c> checks. A backup comes in
     /// under a <c>.partial</c> name, which is never listed, and is renamed once whole, so the folder (which a sync tool may watch) only ever
     /// lists a finished tar beside its hash. The staging folder may be on another volume, where the tar is copied in rather than moved.
     /// </summary>
@@ -69,7 +70,7 @@ namespace Databento.CSharpApiClient.Caching
                 }
 
                 hashWritten = true;
-                await WriteHashAsync(hashTarget, sha256, cancellationToken).ConfigureAwait(false);
+                await WriteHashAsync(hashTarget, sha256, Path.GetFileName(tarTarget), cancellationToken).ConfigureAwait(false);
                 File.Move(partial, tarTarget);
             }
             catch
@@ -110,7 +111,9 @@ namespace Databento.CSharpApiClient.Caching
         public async Task<string> GetSha256Async(string name, CancellationToken cancellationToken = default)
         {
             ThrowIfNotBackupName(name);
-            return (await File.ReadAllTextAsync(this.GetTarPath(name) + HashExtension, Encoding.ASCII, cancellationToken).ConfigureAwait(false)).Trim();
+            // "<hash>  <file name>", as sha256sum writes it, or the hash alone
+            string line = await File.ReadAllTextAsync(this.GetTarPath(name) + HashExtension, Encoding.ASCII, cancellationToken).ConfigureAwait(false);
+            return line.Split((char[])null, 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
         }
 
         /// <inheritdoc/>
@@ -154,12 +157,16 @@ namespace Databento.CSharpApiClient.Caching
             }
         }
 
-        private static async Task WriteHashAsync(string path, string sha256, CancellationToken cancellationToken)
+        /// <summary>
+        /// Writes the hash file as <c>sha256sum</c> does, <c>&lt;hash&gt;  &lt;file name&gt;</c> and a line feed, so <c>sha256sum -c</c>
+        /// checks the tar beside it
+        /// </summary>
+        private static async Task WriteHashAsync(string path, string sha256, string tarFileName, CancellationToken cancellationToken)
         {
             FileStream file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
             await using(file.ConfigureAwait(false))
             {
-                await file.WriteAsync(Encoding.ASCII.GetBytes(sha256), cancellationToken).ConfigureAwait(false);
+                await file.WriteAsync(Encoding.ASCII.GetBytes(Invariant($"{sha256.ToLowerInvariant()}  {tarFileName}\n")), cancellationToken).ConfigureAwait(false);
                 file.Flush(flushToDisk: true);
             }
         }

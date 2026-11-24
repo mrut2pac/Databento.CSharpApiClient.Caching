@@ -61,7 +61,7 @@ A backup is one uncompressed tar of the whole cache root with a manifest of ever
 
 A restore unpacks the backup into the staging folder and checks every file and the tar's hash before it touches the cache. Then it clears the cache as `ExistingFiles` says and moves the backup's files in. By default (`Keep`) it deletes the archive files and keeps the cache's own day files, since they are served first and may be downloads made after the backup. For a cache whose files can't be trusted, such as ones a faulty release wrote, `MoveAside` moves everything into `<root>.bak_<yyyyMMddTHHmmss>` beside it and `Delete` deletes everything; either way the backup lands in a clean root, and day files downloaded since the backup are bought again when next asked for. While it runs, `RESTORE_IN_PROGRESS` in the cache root keeps new cached clients, compactions and backups from starting. A client that is already running is not seen: stop it first, or give the restore an `ICacheInUseChecker` that reports it, and the restore refuses with an `InvalidOperationException` while it says the cache is in use. `DryRun` unpacks and checks a backup into `DryRunFolder` without touching the cache.
 
-Backups go wherever an `IBackupStore` keeps them; `LocalDirectoryBackupStore` is a local or synced folder.
+Backups go wherever an `IBackupStore` keeps them; `LocalDirectoryBackupStore` is a local or synced folder, holding each backup's tar beside its hash in `sha256sum`'s format, so `sha256sum -c 20261119T021530.tar.sha256` checks one without the package.
 
 ## License
 

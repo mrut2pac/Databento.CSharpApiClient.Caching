@@ -77,7 +77,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 Assert.AreEqual(BackupTarTestFiles.Sha256(bytes), file.Sha256, file.Path);
             }
 
-            Assert.AreEqual(BackupTarTestFiles.Sha256(File.ReadAllBytes(this.BackupTar)), File.ReadAllText(this.BackupTar + ".sha256"));
+            Assert.AreEqual(BackupTarTestFiles.Sha256(File.ReadAllBytes(this.BackupTar)) + "  " + Name + ".tar\n", File.ReadAllText(this.BackupTar + ".sha256"));
             Assert.AreEqual(Name, report.Name);
             Assert.AreEqual(cacheFiles.Length, report.FileCount);
             Assert.AreEqual(manifest.TotalBytes, report.TotalBytes);
