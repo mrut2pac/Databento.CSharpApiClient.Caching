@@ -23,3 +23,5 @@
 *.exe       binary
 *.png       binary
 *.jpg       binary
+*.dbn       binary
+*.zst       binary

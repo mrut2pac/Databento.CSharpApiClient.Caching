@@ -17,4 +17,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Databento.CSharpApiClient.Caching\Databento.CSharpApiClient.Caching.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- batch folders in the layout Databento's jobs make, with invented market values (see Batch\Samples\README.md) -->
+    <None Include="Batch\Samples\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -44,7 +44,19 @@ namespace Databento.CSharpApiClient.Caching
         public int MaxSymbolsPerRequest { get; set; } = MaxSymbolsDatabentoTakes;
 
         /// <summary>
-        /// Gets or sets the clock, which decides when an unreadable archive file is tried again. Default <see cref="System.TimeProvider.System"/>.
+        /// Gets or sets how often a batch job's state is asked for while <see cref="CachedDatabentoClient.RunBatchJobAsync"/> waits for it.
+        /// Default 30 seconds.
+        /// </summary>
+        public TimeSpan BatchPollInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// Gets or sets the folder a batch job's files are downloaded into before they are saved as day files, each job in a folder of its
+        /// own that is deleted after. Default <c>null</c>: the system's temporary folder. A job's files take as much room as it bought.
+        /// </summary>
+        public string BatchDownloadFolder { get; set; }
+
+        /// <summary>
+        /// Gets or sets the clock, which decides when an unreadable archive file is tried again and paces the batch job polls. Default <see cref="System.TimeProvider.System"/>.
         /// </summary>
         public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
     }

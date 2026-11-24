@@ -53,6 +53,47 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         public Dictionary<string, DateTime[]> Listings { get; } = new Dictionary<string, DateTime[]>(StringComparer.Ordinal);
 
         /// <summary>
+        /// Gets the days and instrument id each symbol's listing maps to, start inclusive and end exclusive, for a symbol whose instrument id
+        /// a test needs; a symbol not here but in <see cref="Listings"/> gets a made-up id.
+        /// </summary>
+        public Dictionary<string, (DateTime Start, DateTime End, uint InstrumentId)[]> Mappings { get; } = new Dictionary<string, (DateTime Start, DateTime End, uint InstrumentId)[]>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Gets the batch jobs the account holds, those submitted included.
+        /// </summary>
+        public List<FakeBatchJob> Jobs { get; } = new List<FakeBatchJob>();
+
+        /// <summary>
+        /// Gets or sets the sample folder a job submitted from now on gets its files from.
+        /// </summary>
+        public string JobSample { get; set; } = "A_dbn_zstd_day";
+
+        /// <summary>
+        /// Gets or sets the states a job submitted from now on goes through.
+        /// </summary>
+        public string[] JobStates { get; set; } = { "queued", "processing", "done" };
+
+        /// <summary>
+        /// Gets or sets what <c>metadata.get_cost</c> answers, USD.
+        /// </summary>
+        public decimal Cost { get; set; } = 0.000235m;
+
+        /// <summary>
+        /// Gets the files whose listed hash is made wrong, by file name.
+        /// </summary>
+        public HashSet<string> WrongHashes { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Gets or sets the one job whose files <see cref="WrongHashes"/> applies to, or <c>null</c> for every job.
+        /// </summary>
+        public string WrongHashJob { get; set; }
+
+        /// <summary>
+        /// Gets the folder the tests' sample batch folders are in.
+        /// </summary>
+        public static string SamplesFolder => System.IO.Path.Combine(AppContext.BaseDirectory, "Batch", "Samples");
+
+        /// <summary>
         /// Gets or sets a response a request gets instead of the fake's own, or <c>null</c> to let the fake answer.
         /// </summary>
         public Func<FakeRequest, HttpResponseMessage> Respond { get; set; }
@@ -132,6 +173,18 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     return this.AnswerConditions(fake);
                 case "symbology.resolve":
                     return this.AnswerSymbology(fake);
+                case "metadata.get_cost":
+                    return Json(this.Cost.ToString(CultureInfo.InvariantCulture));
+                case "batch.submit_job":
+                    return this.SubmitJob(fake);
+                case "batch.get_job_details":
+                    return Json(this.FindJob(fake.Fields["job_id"]).DetailsJson());
+                case "batch.list_jobs":
+                    return this.ListJobs(fake);
+                case "batch.list_files":
+                    return this.ListFiles(this.FindJob(fake.Fields["job_id"]));
+                case "download":
+                    return this.Download(fake);
                 default:
                     return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{}") };
             }
@@ -247,7 +300,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             foreach(string symbol in request.Symbols)
             {
                 ++instrumentId;
-                if(this.Listings.TryGetValue(symbol, out DateTime[] listed) && listed[0] < end && start < listed[1])
+                if(this.Mappings.TryGetValue(symbol, out (DateTime Start, DateTime End, uint InstrumentId)[] mappings))
+                {
+                    string spans = string.Join(",", mappings.Where(mapping => mapping.Start < end && start < mapping.End).Select(mapping => Invariant($"{{\"d0\":\"{mapping.Start:yyyy-MM-dd}\",\"d1\":\"{mapping.End:yyyy-MM-dd}\",\"s\":\"{mapping.InstrumentId}\"}}")));
+                    result.Add(Invariant($"{JsonSerializer.Serialize(symbol)}:[{spans}]"));
+                }
+                else if(this.Listings.TryGetValue(symbol, out DateTime[] listed) && listed[0] < end && start < listed[1])
                 {
                     DateTime from = listed[0] > start ? listed[0] : start;
                     DateTime to = listed[1] < end ? listed[1] : end;
@@ -260,6 +318,71 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             }
 
             return Json(Invariant($"{{\"result\":{{{string.Join(",", result)}}},\"symbols\":[],\"stype_in\":\"raw_symbol\",\"stype_out\":\"instrument_id\",\"start_date\":\"{start:yyyy-MM-dd}\",\"end_date\":\"{end:yyyy-MM-dd}\",\"partial\":[],\"not_found\":[{string.Join(",", notFound)}],\"message\":\"OK\",\"status\":0}}"));
+        }
+
+        private FakeBatchJob FindJob(string id)
+        {
+            lock(this.sync)
+            {
+                return this.Jobs.Single(job => job.Id == id);
+            }
+        }
+
+        private HttpResponseMessage SubmitJob(FakeRequest request)
+        {
+            FakeBatchJob job;
+            lock(this.sync)
+            {
+                job = new FakeBatchJob
+                {
+                    Id = Invariant($"TEST-{this.Jobs.Count + 1}"),
+                    Fields = new Dictionary<string, string>(request.Fields, StringComparer.Ordinal),
+                    States = this.JobStates,
+                    Sample = this.JobSample,
+                };
+                this.Jobs.Add(job);
+            }
+
+            return Json(Invariant($"{{\"id\":\"{job.Id}\",\"state\":\"received\",\"cost_usd\":null}}"));
+        }
+
+        private HttpResponseMessage ListJobs(FakeRequest request)
+        {
+            string[] states = request.Fields.TryGetValue("states", out string asked) ? asked.Split(',') : new[] { "queued", "processing", "done" };
+            List<string> listed;
+            lock(this.sync)
+            {
+                listed = this.Jobs.Where(job => states.Contains(job.ListedState)).Select(job => Invariant($"{{\"id\":\"{job.Id}\",\"state\":\"{job.ListedState}\",\"ts_received\":\"2026-11-02T12:00:00.000000000Z\"}}")).ToList();
+            }
+
+            return Json("[" + string.Join(",", listed) + "]");
+        }
+
+        private HttpResponseMessage ListFiles(FakeBatchJob job)
+        {
+            List<string> files = new List<string>();
+            foreach(string path in System.IO.Directory.GetFiles(System.IO.Path.Combine(SamplesFolder, job.Sample)).OrderBy(path => path, StringComparer.Ordinal))
+            {
+                string name = System.IO.Path.GetFileName(path);
+                byte[] bytes = System.IO.File.ReadAllBytes(path);
+                string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+                if(this.WrongHashes.Contains(name) && (this.WrongHashJob == null || this.WrongHashJob == job.Id))
+                {
+                    hash = new string('0', 64);
+                }
+
+                files.Add(Invariant($"{{\"filename\":\"{name}\",\"size\":{bytes.Length},\"hash\":\"sha256:{hash}\",\"urls\":{{\"https\":\"https://download.fake/{job.Id}/{Uri.EscapeDataString(name)}\",\"ftp\":\"\"}}}}"));
+            }
+
+            return Json("[" + string.Join(",", files) + "]");
+        }
+
+        private HttpResponseMessage Download(FakeRequest request)
+        {
+            string[] parts = request.Uri.AbsolutePath.Trim('/').Split('/');
+            FakeBatchJob job = this.FindJob(parts[0]);
+            byte[] bytes = System.IO.File.ReadAllBytes(System.IO.Path.Combine(SamplesFolder, job.Sample, Uri.UnescapeDataString(parts[1])));
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
         }
 
         /// <summary>

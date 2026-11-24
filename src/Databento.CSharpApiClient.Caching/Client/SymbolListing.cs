@@ -69,6 +69,24 @@ namespace Databento.CSharpApiClient.Caching.Client
         }
 
         /// <summary>
+        /// Finds the symbol an instrument id stood for on a day, for records that carry no symbol
+        /// </summary>
+        /// <returns>The raw symbol, or <c>null</c> when none of the symbols looked up was that instrument on that day</returns>
+        public string FindSymbol(uint instrumentId, DateTime day)
+        {
+            string id = instrumentId.ToString(CultureInfo.InvariantCulture);
+            foreach(KeyValuePair<string, List<DateSpan>> symbol in this.listedSpans)
+            {
+                if(symbol.Value.Any(span => span.InstrumentId == id && span.Start <= day && day < span.End))
+                {
+                    return symbol.Key;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Tells whether the lookup lists the symbol on any day
         /// </summary>
         public bool IsListed(string symbol)
@@ -97,15 +115,15 @@ namespace Databento.CSharpApiClient.Caching.Client
             if(DateTime.TryParseExact(mapping.StartDate, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime start)
                 && DateTime.TryParseExact(mapping.EndDate, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime end))
             {
-                return new DateSpan(start, end);
+                return new DateSpan(start, end, mapping.Symbol);
             }
 
             return null;
         }
 
         /// <summary>
-        /// Days a mapping holds, start inclusive and end exclusive
+        /// Days a mapping holds, start inclusive and end exclusive, and the instrument id the symbol was then
         /// </summary>
-        private sealed record DateSpan(DateTime Start, DateTime End);
+        private sealed record DateSpan(DateTime Start, DateTime End, string InstrumentId);
     }
 }

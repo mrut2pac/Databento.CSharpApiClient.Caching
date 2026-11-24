@@ -12,9 +12,10 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
     /// </summary>
     internal sealed class FakeRequest
     {
-        private FakeRequest(string path, Dictionary<string, string> fields)
+        private FakeRequest(string path, Uri uri, Dictionary<string, string> fields)
         {
             this.Path = path;
+            this.Uri = uri;
             this.Fields = fields;
         }
 
@@ -22,6 +23,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         /// Gets the endpoint, e.g. <c>timeseries.get_range</c>.
         /// </summary>
         public string Path { get; }
+
+        /// <summary>
+        /// Gets the request's full URI.
+        /// </summary>
+        public Uri Uri { get; }
 
         /// <summary>
         /// Gets the request's fields by name.
@@ -46,13 +52,14 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         public static async Task<FakeRequest> ReadAsync(HttpRequestMessage request)
         {
             Uri uri = new Uri(new Uri("https://hist.databento.com/v0/"), request.RequestUri);
-            string path = uri.AbsolutePath.Substring("/v0/".Length);
+            // a batch file is downloaded from its own URL, which is no API endpoint
+            string path = uri.AbsolutePath.StartsWith("/v0/", StringComparison.Ordinal) ? uri.AbsolutePath.Substring("/v0/".Length) : "download";
             string encoded = request.Content != null ? await request.Content.ReadAsStringAsync().ConfigureAwait(false) : uri.Query.TrimStart('?');
             Dictionary<string, string> fields = encoded
                 .Split('&', StringSplitOptions.RemoveEmptyEntries)
                 .Select(pair => pair.Split('=', 2))
                 .ToDictionary(pair => Decode(pair[0]), pair => pair.Length > 1 ? Decode(pair[1]) : string.Empty, StringComparer.Ordinal);
-            return new FakeRequest(path, fields);
+            return new FakeRequest(path, uri, fields);
         }
 
         private static string Decode(string value)
