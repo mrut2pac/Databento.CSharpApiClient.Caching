@@ -52,7 +52,9 @@ The unit tests write into temporary folders and never touch the network. A test 
 ## Coding conventions
 
 - **Dependencies:** the client and Parquet.Net only. No logging library: results come back as report objects, and progress through `IProgress<T>`.
-- **Public surface stays small:** the compactor, its options and report, and the day-check API are public; the archive format, naming and file handling are `internal`.
+- **Public surface stays small:** the cached client and its options, modes and event, the compactor, its options and report, and the day-check API are public; the archive format, naming, file handling and the client's download machinery (`Client/`) are `internal`.
+- **The cached client's calls are the client's**, async and sync, same names and arguments plus a `CacheMode`, one set per schema the archive has columns for (`Client/CachedSchemas.cs`). A new schema is an archive schema, a row there and its calls.
+- **Its unit tests talk to `FakeDatabento`**, an in-memory Databento behind the client's `IHttpTransport` (time series as JSON lines or a CBBO DBN stream, dataset range and conditions, symbology), so they exercise the real client. `CachedDatabentoClientCallTests.EveryPublicCall_IsCovered` fails when a call is added without its row in that test.
 - **Time comes from `TimeProvider`** (in the options), never `DateTime.Now`, so tests drive it.
 - **Invariant formatting:** `Invariant($"...")`, from the global `using static System.FormattableString`.
 - **Async:** `ConfigureAwait(false)` on every await, as in the client.
