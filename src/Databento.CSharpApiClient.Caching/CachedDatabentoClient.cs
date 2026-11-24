@@ -19,7 +19,7 @@ namespace Databento.CSharpApiClient.Caching
     /// else <c>ts_event</c>. A symbol's download covers its first to its last uncached day, so cached days between them are bought again,
     /// and not saved over: ask for runs of days to avoid it.
     /// </remarks>
-    public sealed partial class CachedDatabentoClient : IDisposable
+    public sealed partial class CachedDatabentoClient : ICachedDatabentoClient
     {
         private readonly DatabentoJsonClient jsonClient;
 
