@@ -7,18 +7,57 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+
+    <!-- debug symbols and Source Link: a .snupkg, so users can step into the source -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <DebugType>portable</DebugType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
-    <!-- packaged from 1.0.0, once the cached client, backup and live tests are in -->
-    <IsPackable>false</IsPackable>
+    <!-- NuGet packaging -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Databento.CSharpApiClient.Caching</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Vardan Tovmasyan</Authors>
+    <Description>A disk cache and Parquet archive for Databento.CSharpApiClient, so each day of Databento data is paid for once. The client's time-series calls served from per-symbol UTC day files, batch jobs for large ranges, a compactor that folds day files into Parquet any reader can query, and backup and restore of the whole cache.</Description>
+    <PackageTags>databento;market-data;cache;parquet;trading;options;futures;historical</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>
+v1.0.0 - 2026-11-24
+
+First release.
+- CachedDatabentoClient: the client's time-series calls for cbbo-1s, cbbo-1m, bbo-1s, bbo-1m, tcbbo, trades,
+  ohlcv-1s/1m/1h/1d and statistics, async and sync, served per symbol and UTC day from the cache, else
+  downloaded whole, and saved before the call returns once Databento says the day is final. JSON or DBN
+  transport, a Bypass mode that downloads again, and empty days saved only when symbology confirms the symbol
+  was not listed (by default).
+- Batch jobs for ranges too large for the time-series calls, with a cost cap and reuse of a job that already
+  covers the range; any Databento batch download folder can be ingested too.
+- DatabentoArchiveCompactor: folds day files into one Parquet archive per dataset, schema, group and month,
+  checked record by record (by default) before the files it replaces are deleted.
+- DatabentoCacheBackup and DatabentoCacheRestore: the whole cache as one checked tar in an IBackupStore, with
+  retention, a dry run, and a restore that refuses while the cache is in use.
+
+Full history: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/CHANGELOG.md
+    </PackageReleaseNotes>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Condition="Exists('..\..\README.md')" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- the client as its users get it: a feature the package needs ships in a client release first -->
     <PackageReference Include="Databento.CSharpApiClient" Version="2.6.0" />
     <PackageReference Include="Parquet.Net" Version="6.1.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

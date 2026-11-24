@@ -1,8 +1,68 @@
 # Databento.CSharpApiClient.Caching
 
+[![NuGet](https://img.shields.io/nuget/v/Databento.CSharpApiClient.Caching.svg)](https://www.nuget.org/packages/Databento.CSharpApiClient.Caching)
+
 A disk cache and Parquet archive for [Databento.CSharpApiClient](https://github.com/mrut2pac/Databento.CSharpApiClient), so each day of Databento data is paid for once.
 
-**Work in progress: not yet released to NuGet.** What is in so far: the cache's on-disk format, the compactor, the cached client with batch jobs, and backup and restore.
+- **Cached client:** the client's time-series calls, served per symbol and UTC day from the cache, and downloaded only for the days it lacks.
+- **Batch jobs:** ranges too large for the time-series calls, priced first and kept under a cost cap.
+- **Archive:** a compactor folds the day files into Parquet that DuckDB, pandas or any Parquet reader can query.
+- **Backup and restore:** the whole cache as one checked tar.
+
+See [CHANGELOG.md](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/CHANGELOG.md) for the version history.
+
+## Installation
+
+```
+dotnet add package Databento.CSharpApiClient.Caching
+```
+
+It brings in `Databento.CSharpApiClient` and Parquet.Net, and targets .NET 8.
+
+## The cached client
+
+```csharp
+using Databento.CSharpApiClient;
+using Databento.CSharpApiClient.Caching;
+using Databento.CSharpApiClient.DataModel;
+
+using CachedDatabentoClient client = new CachedDatabentoClient(new CachedDatabentoClientOptions
+{
+    Databento = new DatabentoOptions { ApiKey = "YOUR_API_KEY" },
+    CacheRoot = @"D:\MarketData\Databento",
+});
+
+ICbboRecord[] quotes = await client.GetCbbo1mAsync(
+    Datasets.OpraPillar,
+    "SPXW  261016C06600000",
+    new DateTimeOffset(2026, 10, 15, 13, 30, 0, TimeSpan.Zero),
+    new DateTimeOffset(2026, 10, 15, 20, 15, 0, TimeSpan.Zero));
+```
+
+The first call downloads the whole UTC day of 2026-10-15 for that symbol, saves it and returns the records in the range. Any later call that touches that day, from this process or another one on the same cache root, reads it from disk.
+
+- **Calls:** cbbo-1s, cbbo-1m, bbo-1s, bbo-1m, tcbbo, trades, ohlcv-1s, ohlcv-1m, ohlcv-1h, ohlcv-1d and statistics, async and sync, for one symbol or several. They take the client's arguments plus a `CacheMode`, and return the client's record interfaces (`ICbboRecord`, `ITradeRecord`, ...) in time order. For several symbols, only the symbol-days the cache lacks are downloaded, at most 2,000 symbols a download request (`MaxSymbolsPerRequest`).
+- **Days.** A record's day is the UTC date of the timestamp Databento filters a range on: `ts_recv` where the schema has one, else `ts_event`. A day is saved once Databento says it is final; until then it is served but downloaded again next time. A symbol's download covers its first to its last missing day, so ask for runs of days rather than scattered ones.
+- **Empty days.** By default (`EmptyDayPolicy.CacheWhenNotListed`) a day with no records is saved as empty only when Databento's free symbology lookup confirms the symbol was not listed that day. An empty answer for a listed symbol, such as a weekend, is served but not saved.
+- **Downloading again.** `CacheMode.Bypass` downloads the days again and replaces their day files; `BypassMissAction` says what happens to a cached day Databento now answers with no records.
+- **Transport.** `DatabentoTransport.Json` (the default) or `Dbn`. The cache saves the same JSON records either way, so you can switch at any time.
+- **Unreadable archive files** raise `ArchiveFileUnreadable`, for the host to alarm on. Meanwhile the days only that file holds are downloaded again, and the file is left in place for you to restore or remove.
+
+## Batch jobs
+
+```csharp
+string[] symbols = { "SPXW  261016C06600000", "SPXW  261016P06600000" };
+
+BatchReport batch = await client.RunBatchJobAsync(
+    Datasets.OpraPillar,
+    "cbbo-1m",
+    symbols,
+    new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero),
+    new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero),
+    maxCostUsd: 5m);
+```
+
+For ranges too large for the time-series calls: it saves the final symbol-days the cache lacks through Databento batch jobs and returns once they are saved, and the time-series calls then serve them. Databento prices the jobs first; past `maxCostUsd` it throws `BatchJobTooExpensiveException` and submits nothing. A job submitted before that covers the range, and is not expired, is downloaded again at no cost. `IngestBatchFolderAsync` saves a batch download folder you already have, made by any tool.
 
 ## The cache
 
