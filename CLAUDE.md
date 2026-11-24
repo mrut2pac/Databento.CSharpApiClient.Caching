@@ -10,16 +10,16 @@ A disk cache and Parquet archive on top of [Databento.CSharpApiClient](https://g
 
 ```
 src/
-  Databento.CSharpApiClient.Caching/            ← the library (not packaged yet)
+  Databento.CSharpApiClient.Caching/            ← the library, the NuGet package
 tests/
   Databento.CSharpApiClient.Caching.UnitTests/  ← deterministic, no network
   Databento.CSharpApiClient.Caching.IntegrationTests/  ← live Databento, costs money; Inconclusive without DATABENTO_API_KEY
 .github/workflows/ci.yml                        ← CI: build + unit tests on every push/PR
+.github/workflows/publish.yml                   ← packs and pushes to NuGet.org on a v* tag
 ```
 
 - **The client comes from NuGet**, as for any of its users (`PackageReference`, not a project reference). A client feature the package needs ships in a client release first, and the package then moves to that version.
 - **Only the client's public API**: no `InternalsVisibleTo` from the client, no copies of its internals.
-- **Not packable yet** (`IsPackable` false): the first release, 1.0.0, comes once the cached client, backup and restore, and live tests are in.
 
 ---
 
@@ -49,6 +49,21 @@ dotnet test tests/Databento.CSharpApiClient.Caching.UnitTests
 The unit tests write into temporary folders and never touch the network. A test that needs Windows file locking (an open handle that blocks a delete) is `Inconclusive` elsewhere; the rest run on every OS, the delete retries through a test hook.
 
 **Live tests cost money.** `tests/Databento.CSharpApiClient.Caching.IntegrationTests` downloads whole UTC days from Databento with the key in `DATABENTO_API_KEY` (without it every test is `Inconclusive`; CI builds the project but never runs it). A full run costs about $0.14. `LiveBudget` prices every download first with the free cost endpoint and fails a test, without buying, when the run would pass its cap; calls the cache must serve run after `CountingTransport.ForbidDownloads()`, which refuses any paid request ($0.25, or `DATABENTO_LIVE_TEST_CAP_USD`). Never run them unfiltered without agreeing the cost first; add a test's downloads to `LiveBudget` before it buys anything, and keep the symbols and days cheap. What they check: every cached schema's day against Databento's own record count on both transports, a range across UTC midnight, empty days (not listed: saved; listed but empty: not saved), a batch job, parent-symbol groups against Databento's symbology, and a downloaded cache through compaction, backup and restore.
+
+---
+
+## Releasing to NuGet.org
+
+**Code changes and version bumps are separate PRs**, so the history shows each release as its own step. A feature or fix PR adds its entry under CHANGELOG `[Unreleased]` and never touches `<Version>` or `<PackageReleaseNotes>`; the version bump is a `chore:` PR of its own, opened once every PR of the release is merged.
+
+1. Decide whether the live tests must run first. Diff from the last `v*` tag to the commit that will be tagged: a run is needed when anything touches downloads, the day files, the archive or a restore, or when the last full run predates such a change. Price it and agree the cost first (see "Live tests cost money"), run it on that commit, and record the passed count, or "not needed" and why, in the bump PR's Testing section.
+2. Bump `<Version>` in the library's csproj, add its `<PackageReleaseNotes>` entry, and cut CHANGELOG `[Unreleased]` into a dated section with its compare link.
+3. Merge the bump PR, then tag `main` and push the tag:
+   ```bash
+   git tag v1.2.3
+   git push origin v1.2.3
+   ```
+4. `publish.yml` builds Release, packs the `.nupkg` and `.snupkg`, and pushes them to NuGet.org through NuGet Trusted Publishing: no API key is stored, but nuget.org needs a Trusted Publishing policy for this repository and `publish.yml`. `--skip-duplicate` makes a tag for a version already on NuGet.org a no-op.
 
 ---
 
