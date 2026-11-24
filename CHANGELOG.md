@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- `ICachedDatabentoClient`, which `CachedDatabentoClient` implements: the 11 time-series calls for several symbols with a `CacheMode`, `RunBatchJobAsync`, `IngestBatchFolderAsync` and the `ArchiveFileUnreadable` event, so code written against it can be handed a fake in tests. An implementation writes only those 11 calls: default implementations serve the client's own calls through them with `CacheMode.Use`. `CachedDatabentoClientExtensions` adds the one-symbol and synchronous forms of each call; on `CachedDatabentoClient` its own methods are called instead.
+- `CachedDatabentoClient` is an `IDatabentoTimeseriesClient`, the client's own interface from 2.7.0, and serves its calls with `CacheMode.Use`. So code that takes either Databento client takes the cache too, chosen by configuration.
+  - Unlike the Databento clients, the cache refuses `ALL_SYMBOLS` with an `ArgumentException`, as it always has: it needs the raw symbols.
+
+### Changed
+- Built on `Databento.CSharpApiClient` 2.7.0 (it was 2.6.0).
+
 ## [1.0.0] - 2026-11-24
 
 The first release, built on `Databento.CSharpApiClient` 2.6.0.

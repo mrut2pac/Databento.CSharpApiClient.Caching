@@ -8,6 +8,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <summary>
         /// Each symbol-day from its day file, else from the archive, else downloaded and saved.
         /// </summary>
+        // stays 0: a call given the default literal where a cache mode or a token may go takes it as the cache mode
         Use = 0,
 
         /// <summary>
