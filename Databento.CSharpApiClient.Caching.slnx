@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Databento.CSharpApiClient.Caching/Databento.CSharpApiClient.Caching.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Databento.CSharpApiClient.Caching.UnitTests/Databento.CSharpApiClient.Caching.UnitTests.csproj" />
+  </Folder>
+</Solution>

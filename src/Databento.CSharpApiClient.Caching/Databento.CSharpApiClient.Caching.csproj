@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Databento.CSharpApiClient.Caching</RootNamespace>
+    <AssemblyName>Databento.CSharpApiClient.Caching</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+    <DebugType>portable</DebugType>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- packaged from 1.0.0, once the cached client, backup and live tests are in -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the client as its users get it: a feature the package needs ships in a client release first -->
+    <PackageReference Include="Databento.CSharpApiClient" Version="2.5.0" />
+    <PackageReference Include="Parquet.Net" Version="6.1.0" />
+  </ItemGroup>
+
+</Project>
