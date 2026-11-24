@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <!-- the client as its users get it: a feature the package needs ships in a client release first -->
-    <PackageReference Include="Databento.CSharpApiClient" Version="2.5.0" />
+    <PackageReference Include="Databento.CSharpApiClient" Version="2.6.0" />
     <PackageReference Include="Parquet.Net" Version="6.1.0" />
   </ItemGroup>
 
