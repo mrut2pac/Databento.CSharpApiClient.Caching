@@ -54,6 +54,24 @@ namespace Databento.CSharpApiClient.Caching.Cache
             File.WriteAllText(GetPath(cacheRoot), Invariant($"backup {backupName}, started {startUtc:yyyy-MM-dd HH:mm:ss} UTC on {Environment.MachineName}"));
         }
 
+        /// <summary>
+        /// Gets whether the cache root holds the marker
+        /// </summary>
+        /// <param name="cacheRoot">Cache root</param>
+        public static bool Exists(string cacheRoot)
+        {
+            return File.Exists(GetPath(cacheRoot));
+        }
+
+        /// <summary>
+        /// Deletes the marker, once the cache is whole again
+        /// </summary>
+        /// <param name="cacheRoot">Cache root</param>
+        public static void Delete(string cacheRoot)
+        {
+            File.Delete(GetPath(cacheRoot));
+        }
+
         private static string GetPath(string cacheRoot)
         {
             return Path.Combine(cacheRoot, FileName);
