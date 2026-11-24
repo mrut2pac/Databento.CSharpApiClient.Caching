@@ -30,7 +30,7 @@ namespace Databento.CSharpApiClient.Caching.Client
 
         private readonly SymbolDayStore store;
 
-        private readonly DatasetAvailability availability = new DatasetAvailability();
+        private readonly DatasetAvailability availability;
 
         /// <summary>
         /// Shared by every client of the process, so two clients on one cache root download a symbol-day once between them
@@ -42,12 +42,13 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// </summary>
         private readonly string rootKey;
 
-        public CachedTimeseries(CachedDatabentoClientOptions options, DatabentoJsonClient jsonClient, DatabentoClient dbnClient, SymbolDayStore store)
+        public CachedTimeseries(CachedDatabentoClientOptions options, DatabentoJsonClient jsonClient, DatabentoClient dbnClient, SymbolDayStore store, DatasetAvailability availability)
         {
             this.options = options;
             this.jsonClient = jsonClient;
             this.dbnClient = dbnClient;
             this.store = store;
+            this.availability = availability;
             this.rootKey = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.CacheRoot));
         }
 

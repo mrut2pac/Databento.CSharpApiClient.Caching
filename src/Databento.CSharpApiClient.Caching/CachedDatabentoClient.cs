@@ -27,6 +27,8 @@ namespace Databento.CSharpApiClient.Caching
 
         private readonly CachedTimeseries timeseries;
 
+        private readonly BatchJobs batchJobs;
+
         /// <summary>
         /// Opens a cache
         /// </summary>
@@ -52,7 +54,9 @@ namespace Databento.CSharpApiClient.Caching
             this.dbnClient = new DatabentoClient(settings.Databento, transport);
             ArchiveCatalog catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable);
             SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, catalog);
-            this.timeseries = new CachedTimeseries(settings, this.jsonClient, this.dbnClient, store);
+            DatasetAvailability availability = new DatasetAvailability();
+            this.timeseries = new CachedTimeseries(settings, this.jsonClient, this.dbnClient, store, availability);
+            this.batchJobs = new BatchJobs(settings, this.jsonClient, store, availability, new BatchIngestion(settings, this.jsonClient, store));
         }
 
         /// <summary>
@@ -94,6 +98,11 @@ namespace Databento.CSharpApiClient.Caching
                 throw new ArgumentException(Invariant($"MaxSymbolsPerRequest {options.MaxSymbolsPerRequest} must be 1 to {CachedDatabentoClientOptions.MaxSymbolsDatabentoTakes}."), nameof(options));
             }
 
+            if(options.BatchPollInterval <= TimeSpan.Zero)
+            {
+                throw new ArgumentException(Invariant($"BatchPollInterval {options.BatchPollInterval} must be above zero."), nameof(options));
+            }
+
             if(options.TimeProvider == null)
             {
                 throw new ArgumentException("A TimeProvider is needed.", nameof(options));
@@ -107,6 +116,8 @@ namespace Databento.CSharpApiClient.Caching
                 EmptyDays = options.EmptyDays,
                 BypassMissAction = options.BypassMissAction,
                 MaxSymbolsPerRequest = options.MaxSymbolsPerRequest,
+                BatchPollInterval = options.BatchPollInterval,
+                BatchDownloadFolder = options.BatchDownloadFolder,
                 TimeProvider = options.TimeProvider,
             };
         }

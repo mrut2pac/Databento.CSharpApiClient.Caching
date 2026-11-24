@@ -129,6 +129,57 @@ namespace Databento.CSharpApiClient.Caching.Archive
             return null;
         }
 
+        /// <summary>
+        /// Tells whether the current version in a symbol-day's month folder lists the day, from its index alone
+        /// </summary>
+        /// <typeparam name="TSource">Record interface</typeparam>
+        /// <typeparam name="TRecord">Record type a read returns</typeparam>
+        /// <param name="schema">Archive schema of the Databento schema</param>
+        /// <param name="folder">Month folder of the day, as listed; listed again when a file of it is gone</param>
+        /// <param name="symbol">Databento raw symbol</param>
+        /// <param name="date">UTC day, in the folder's month</param>
+        /// <param name="strict">Whether a file of the version that cannot be read throws, rather than counting as not listing the day</param>
+        /// <returns><c>true</c> when a readable archive file lists the day, empty or not</returns>
+        /// <exception cref="InvalidDataException">Strict, and a file of the version cannot be read</exception>
+        public async Task<bool> ContainsSymbolDayAsync<TSource, TRecord>(ArchiveRecordSchema<TSource, TRecord> schema, CacheMonthFolder folder, string symbol, DateTime date, bool strict)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+        {
+            ArgumentNullException.ThrowIfNull(schema);
+            ArgumentNullException.ThrowIfNull(folder);
+
+            string prefix = ArchiveFileName.GetSearchPrefix(folder.Dataset, folder.Schema, ArchiveGroup.Of(folder.Dataset, symbol), folder.Year, folder.Month, folder.Cutoff);
+            for(int attempt = 0; attempt < 2; ++attempt)
+            {
+                try
+                {
+                    LoadedVersion version = await this.FindVersionAsync(schema, folder, prefix).ConfigureAwait(false);
+                    if(version?.Locate(symbol, date.Day, out _) != null)
+                    {
+                        return true;
+                    }
+
+                    ArchiveVersion current = ArchiveFileName.FindCurrentVersion(folder.Files, prefix);
+                    if(strict && current != null && (version == null || version.Files.Count != current.Paths.Count))
+                    {
+                        throw new InvalidDataException(Invariant($"An archive file of {Path.Combine(folder.Directory, prefix)}* cannot be read, so whether it holds {symbol} {date:yyyy-MM-dd} is unknown."));
+                    }
+
+                    return false;
+                }
+                catch(Exception ex) when(IsRetired(ex))
+                {
+                    folder.Refresh();
+                }
+                catch(Exception ex) when(!strict && IsUnreadable(ex))
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
         private static bool IsRetired(Exception ex)
         {
             return ex is FileNotFoundException || ex is DirectoryNotFoundException;
