@@ -1,22 +1,22 @@
 {
-    "job_id": "GLBX-20261124-D437GDSUWA",
+    "job_id": "GLBX-20261124-SAMPLEJOBE",
     "files": [
         {
             "filename": "condition.json",
             "size": 242,
             "hash": "sha256:0675d821a0fa0e28283c4b02b6d189bbe8c30cc89c58b866dfe5e6a0b81b94a3",
             "urls": {
-                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-D437GDSUWA/condition.json",
-                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-D437GDSUWA/condition.json"
+                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-SAMPLEJOBE/condition.json",
+                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-SAMPLEJOBE/condition.json"
             }
         },
         {
             "filename": "metadata.json",
             "size": 690,
-            "hash": "sha256:63c22ff5f4a1df6e1d3113dfee067c8f4d665a2896fb426818e9c1b1ea62dc59",
+            "hash": "sha256:a812cd983811f69ae1dab2f0416ffdd6c414009d253c515d64f4889bf93e2e91",
             "urls": {
-                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-D437GDSUWA/metadata.json",
-                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-D437GDSUWA/metadata.json"
+                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-SAMPLEJOBE/metadata.json",
+                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-SAMPLEJOBE/metadata.json"
             }
         },
         {
@@ -24,8 +24,8 @@
             "size": 45059,
             "hash": "sha256:acbb1c3ce344041d6d1143a76d920e7260ef6c9e049ae716754b778a98b77a63",
             "urls": {
-                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-D437GDSUWA/glbx-mdp3-20261015.bbo-1m.dbn.zst",
-                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-D437GDSUWA/glbx-mdp3-20261015.bbo-1m.dbn.zst"
+                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-SAMPLEJOBE/glbx-mdp3-20261015.bbo-1m.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-SAMPLEJOBE/glbx-mdp3-20261015.bbo-1m.dbn.zst"
             }
         },
         {
@@ -33,8 +33,8 @@
             "size": 41034,
             "hash": "sha256:01238c9bd814bb31647558326582445fccf276a25a3544b5e95264344c9c2689",
             "urls": {
-                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-D437GDSUWA/glbx-mdp3-20261016.bbo-1m.dbn.zst",
-                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-D437GDSUWA/glbx-mdp3-20261016.bbo-1m.dbn.zst"
+                "https": "https://api.databento.com/v0/batch/download/USERID/GLBX-20261124-SAMPLEJOBE/glbx-mdp3-20261016.bbo-1m.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USERID/GLBX-20261124-SAMPLEJOBE/glbx-mdp3-20261016.bbo-1m.dbn.zst"
             }
         }
     ]
