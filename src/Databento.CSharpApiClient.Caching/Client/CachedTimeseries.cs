@@ -94,9 +94,14 @@ namespace Databento.CSharpApiClient.Caching.Client
             List<DateTime> days = GetDays(startUtc, endUtc);
             Dictionary<SymbolDay, TSource[]> served = new Dictionary<SymbolDay, TSource[]>();
             HashSet<SymbolDay> pending = new HashSet<SymbolDay>(distinctSymbols.SelectMany(symbol => days.Select(day => new SymbolDay(symbol, day))));
-            if(cacheMode == CacheMode.Use)
+            if(cacheMode != CacheMode.Bypass)
             {
                 await this.ReadCachedAsync(schema, dataset, pending, served, cancellationToken).ConfigureAwait(false);
+            }
+
+            if(cacheMode == CacheMode.CacheOnly && pending.Count > 0)
+            {
+                throw new NotCachedException(dataset, schema.Name, pending.Select(symbolDay => new KeyValuePair<string, DateTime>(symbolDay.Symbol, symbolDay.Day)));
             }
 
             while(pending.Count > 0)

@@ -16,5 +16,11 @@ namespace Databento.CSharpApiClient.Caching
         /// a paid request; an empty answer for a cached day follows <see cref="CachedDatabentoClientOptions.BypassMissAction"/>.
         /// </summary>
         Bypass = 1,
+
+        /// <summary>
+        /// Each symbol-day from its day file, else from the archive, and nothing downloaded: when the cache lacks any symbol-day the call
+        /// throws <see cref="NotCachedException"/> naming them, so it never costs anything.
+        /// </summary>
+        CacheOnly = 2,
     }
 }

@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- `CacheMode.CacheOnly`: serves what the cache holds and downloads nothing, so a call never costs anything. When the cache lacks any symbol-day of the range, the call throws `NotCachedException`, which names them (`MissingDays`, by raw symbol) and asks Databento nothing, not even the free metadata and symbology calls. For a restored backup used as it is, or a host that must not reach Databento for a while.
+
 ## [1.1.0] - 2026-11-25
 
 ### Added
