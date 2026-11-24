@@ -20,7 +20,7 @@
     <!-- NuGet packaging -->
     <IsPackable>true</IsPackable>
     <PackageId>Databento.CSharpApiClient.Caching</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Vardan Tovmasyan</Authors>
     <Description>A disk cache and Parquet archive for Databento.CSharpApiClient, so each day of Databento data is paid for once. The client's time-series calls served from per-symbol UTC day files, batch jobs for large ranges, a compactor that folds day files into Parquet any reader can query, and backup and restore of the whole cache.</Description>
     <PackageTags>databento;market-data;cache;parquet;trading;options;futures;historical</PackageTags>
@@ -30,6 +30,20 @@
     <RepositoryUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>
+v1.1.0 - 2026-11-25
+
+Added
+- ICachedDatabentoClient, which CachedDatabentoClient implements: the time-series calls with a CacheMode, the
+  batch calls and the ArchiveFileUnreadable event, so code can be handed a fake in tests. An implementation
+  writes only the 11 async calls for several symbols; CachedDatabentoClientExtensions adds the one-symbol and
+  sync forms.
+- CachedDatabentoClient is an IDatabentoTimeseriesClient (client 2.7.0) and serves its calls from the cache
+  (CacheMode.Use), so code that takes either Databento client takes the cache too. The cache still refuses
+  ALL_SYMBOLS: it needs the raw symbols.
+
+Changed
+- Built on Databento.CSharpApiClient 2.7.0 (it was 2.6.0).
+
 v1.0.0 - 2026-11-24
 
 First release.
