@@ -13,7 +13,7 @@ using static Databento.CSharpApiClient.Caching.UnitTests.Client.CachedClientFixt
 namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 {
     /// <summary>
-    /// <see cref="CachedDatabentoClient.RunBatchJobAsync"/> against the fake's batch jobs, whose files are those of a real job: the
+    /// <see cref="CachedDatabentoClient.RunBatchJobAsync"/> against the fake's batch jobs, whose files are a sample folder with invented market values: the
     /// 2026-10-16 SPXW 6600 call and put over 2026-10-15 and 10-16, DBN, zstd, split by day
     /// </summary>
     [TestClass]

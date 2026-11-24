@@ -21,8 +21,8 @@
         },
         {
             "filename": "opra-pillar-20261015-20261016.tcbbo.json",
-            "size": 14358,
-            "hash": "sha256:fa33494a5160172ba64cdf1754cbee36e55c35cacc85218897854143f5e417de",
+            "size": 14784,
+            "hash": "sha256:2da5e4e358d636dc9ecedd12c671aa0923b125de636029670375760c669c3275",
             "urls": {
                 "https": "https://api.databento.com/v0/batch/download/USERID/OPRA-20261124-6KPT77PCLH/opra-pillar-20261015-20261016.tcbbo.json",
                 "ftp": "ftp://ftp.databento.com/USERID/OPRA-20261124-6KPT77PCLH/opra-pillar-20261015-20261016.tcbbo.json"

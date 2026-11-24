@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- batch folders Databento made for real jobs, test fixtures as they came (the account id in the manifests replaced) -->
+    <!-- batch folders in the layout Databento's jobs make, with invented market values (see Batch\Samples\README.md) -->
     <None Include="Batch\Samples\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

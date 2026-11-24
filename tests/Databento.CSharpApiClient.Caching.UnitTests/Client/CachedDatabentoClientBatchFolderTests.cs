@@ -21,8 +21,9 @@ using static Databento.CSharpApiClient.Caching.UnitTests.Client.CachedClientFixt
 namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 {
     /// <summary>
-    /// Folders Databento made for real jobs on 2026-11-24, kept under <c>Batch\Samples</c>: the 2026-10-16 SPXW 6600 call and put over
-    /// 2026-10-15 and 10-16 in several encodings and splits, MNQZ6 on GLBX, and one job naming a contract that was never listed
+    /// Folders kept under <c>Batch\Samples</c> in the layout of Databento batch jobs, with invented market values: the 2026-10-16
+    /// SPXW 6600 call and put over 2026-10-15 and 10-16 in several encodings and splits, MNQZ6 on GLBX, and one job naming a
+    /// contract that was never listed
     /// </summary>
     [TestClass]
     public sealed class CachedDatabentoClientBatchFolderTests
