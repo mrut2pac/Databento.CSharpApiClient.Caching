@@ -13,6 +13,7 @@ src/
   Databento.CSharpApiClient.Caching/            ← the library (not packaged yet)
 tests/
   Databento.CSharpApiClient.Caching.UnitTests/  ← deterministic, no network
+  Databento.CSharpApiClient.Caching.IntegrationTests/  ← live Databento, costs money; Inconclusive without DATABENTO_API_KEY
 .github/workflows/ci.yml                        ← CI: build + unit tests on every push/PR
 ```
 
@@ -46,6 +47,8 @@ dotnet test tests/Databento.CSharpApiClient.Caching.UnitTests
 ```
 
 The unit tests write into temporary folders and never touch the network. A test that needs Windows file locking (an open handle that blocks a delete) is `Inconclusive` elsewhere; the rest run on every OS, the delete retries through a test hook.
+
+**Live tests cost money.** `tests/Databento.CSharpApiClient.Caching.IntegrationTests` downloads whole UTC days from Databento with the key in `DATABENTO_API_KEY` (without it every test is `Inconclusive`; CI builds the project but never runs it). A full run costs about $0.14. `LiveBudget` prices every download first with the free cost endpoint and fails a test, without buying, when the run would pass its cap; calls the cache must serve run after `CountingTransport.ForbidDownloads()`, which refuses any paid request ($0.25, or `DATABENTO_LIVE_TEST_CAP_USD`). Never run them unfiltered without agreeing the cost first; add a test's downloads to `LiveBudget` before it buys anything, and keep the symbols and days cheap. What they check: every cached schema's day against Databento's own record count on both transports, a range across UTC midnight, empty days (not listed: saved; listed but empty: not saved), a batch job, parent-symbol groups against Databento's symbology, and a downloaded cache through compaction, backup and restore.
 
 ---
 
