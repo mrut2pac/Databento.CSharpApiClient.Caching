@@ -213,6 +213,32 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         }
 
         [TestMethod]
+        public async Task GetCbbo1sAsync_JsonTransport_DownloadsWithNoDbnClient()
+        {
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            using(CachedDatabentoClient client = fixture.CreateClient())
+            {
+                fixture.Databento.Add("cbbo-1s", OneSecond(Call, 1));
+
+                ICbboRecord[] served = await client.GetCbbo1sAsync("OPRA.PILLAR", new[] { Call }, DayStart, DayEnd);
+
+                Assert.IsNull(client.DbnClient, "a client that downloads JSON never needs one");
+                Assert.AreEqual(1, served.Length);
+                Assert.AreNotEqual("dbn", fixture.Databento.TimeseriesRequests[0].Fields.GetValueOrDefault("encoding"));
+            }
+        }
+
+        [TestMethod]
+        public void Constructor_DbnTransport_CreatesTheDbnClient()
+        {
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            using(CachedDatabentoClient client = fixture.CreateClient(options => options.Transport = DatabentoTransport.Dbn))
+            {
+                Assert.IsNotNull(client.DbnClient);
+            }
+        }
+
+        [TestMethod]
         public async Task GetCbbo1sAsync_DbnTransport_SavesTheSameJsonRecordsAsTheJsonTransport()
         {
             CbboRecordJson[] viaJson;

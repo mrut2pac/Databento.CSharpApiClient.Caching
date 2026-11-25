@@ -24,6 +24,9 @@ namespace Databento.CSharpApiClient.Caching
     {
         private readonly DatabentoJsonClient jsonClient;
 
+        /// <summary>
+        /// The DBN client the records are downloaded with, or null when they are downloaded as JSON
+        /// </summary>
         private readonly DatabentoClient dbnClient;
 
         private readonly CachedTimeseries timeseries;
@@ -52,7 +55,7 @@ namespace Databento.CSharpApiClient.Caching
             CacheMetadata.Read(settings.CacheRoot);
 
             this.jsonClient = new DatabentoJsonClient(settings.Databento, transport);
-            this.dbnClient = new DatabentoClient(settings.Databento, transport);
+            this.dbnClient = settings.Transport == DatabentoTransport.Dbn ? new DatabentoClient(settings.Databento, transport) : null;
             ArchiveCatalog catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable);
             SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, catalog);
             DatasetAvailability availability = new DatasetAvailability();
@@ -68,12 +71,17 @@ namespace Databento.CSharpApiClient.Caching
         public event EventHandler<ArchiveFileUnreadableEventArgs> ArchiveFileUnreadable;
 
         /// <summary>
+        /// Gets the DBN client the records are downloaded with, or null when they are downloaded as JSON, for tests
+        /// </summary>
+        internal DatabentoClient DbnClient => this.dbnClient;
+
+        /// <summary>
         /// Releases the Databento clients and their HTTP transport
         /// </summary>
         public void Dispose()
         {
             this.jsonClient.Dispose();
-            this.dbnClient.Dispose();
+            this.dbnClient?.Dispose();
         }
 
         private static CachedDatabentoClientOptions CopyChecked(CachedDatabentoClientOptions options)

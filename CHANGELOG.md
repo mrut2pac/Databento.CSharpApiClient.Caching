@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 - Built on `Databento.CSharpApiClient` 2.7.1.
+- The cached client creates its DBN client only when `Transport` is `Dbn`; with the default `Json` it held an unused one, with its own `HttpClient`.
 
 ## [1.2.0] - 2026-11-25
 
