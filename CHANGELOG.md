@@ -10,6 +10,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Databento's metadata and symbology calls on the cached client, passed through uncached: `ListDatasets`, `ListSchemas`, `ListPublishers`, `ListFields`, `ListUnitPrices`, `GetDatasetCondition`, `GetDatasetRange`, `ListConditions`, `GetRecordCount`, `GetBillableSize`, `GetCost` and `ResolveSymbols`, async and sync, so one client serves both the cached time series and the rest of the API.
   - On `ICachedDatabentoClient` as async calls with default implementations that throw `NotSupportedException`, so outside implementations keep compiling; their synchronous forms are in `CachedDatabentoClientExtensions`.
 
+### Changed
+- Built on `Databento.CSharpApiClient` 2.7.1.
+
 ## [1.2.0] - 2026-11-25
 
 ### Added
