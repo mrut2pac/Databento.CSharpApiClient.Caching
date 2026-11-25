@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-25
+
 ### Added
 - Databento's metadata and symbology calls on the cached client, passed through uncached: `ListDatasets`, `ListSchemas`, `ListPublishers`, `ListFields`, `ListUnitPrices`, `GetDatasetCondition`, `GetDatasetRange`, `ListConditions`, `GetRecordCount`, `GetBillableSize`, `GetCost` and `ResolveSymbols`, so one client serves both the cached time series and the rest of the API.
   - On `ICachedDatabentoClient` as async calls with default implementations that throw `NotSupportedException`, so outside implementations keep compiling; their synchronous forms are in `CachedDatabentoClientExtensions`.
@@ -45,7 +47,8 @@ The first release, built on `Databento.CSharpApiClient` 2.6.0.
 - `DatabentoArchiveCompactor`: folds day files into Parquet, one archive per dataset, schema, group and month, as a full file and at most one delta. OPRA options are grouped by their parent (`SPXW.OPT`) and CME futures by theirs (`MNQ.FUT`). Each new file is checked against its sources, record by record by default (`ArchiveVerification`), before it is published and the files it replaces are deleted. Optional `IArchiveDayCheck`s flag suspect days in the report.
 - `DatabentoCacheBackup` and `DatabentoCacheRestore`: the whole cache as one tar with a SHA-256 manifest, kept in an `IBackupStore` (`LocalDirectoryBackupStore` for a local or synced folder) under a `BackupRetention`. A restore checks every file before it touches the cache, says what happens to the cache's own files (`ExistingCacheFiles`), and refuses while an `ICacheInUseChecker` reports the cache in use. A dry run of a restore unpacks and checks a backup without touching the cache.
 
-[Unreleased]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/releases/tag/v1.0.0
