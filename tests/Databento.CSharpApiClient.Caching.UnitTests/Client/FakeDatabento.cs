@@ -145,6 +145,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
         public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // as HttpClient does, a canceled token stops the request before it is sent
+            cancellationToken.ThrowIfCancellationRequested();
             FakeRequest fake = await FakeRequest.ReadAsync(request).ConfigureAwait(false);
             lock(this.sync)
             {

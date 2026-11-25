@@ -11,7 +11,8 @@ namespace Databento.CSharpApiClient.Caching
     /// The Databento client's time-series calls, served from a disk cache: each UTC day a range touches, per symbol, from its day file, else
     /// from the archive the compactor builds, else downloaded whole and saved as a day file before the call returns, once Databento says the
     /// day is final. So each symbol-day is paid for once. The calls take the client's arguments plus a <see cref="CacheMode"/>, and return
-    /// the record interfaces, in time order, trimmed to the range.
+    /// the record interfaces, in time order, trimmed to the range. Databento's metadata and symbology calls are passed through uncached, so
+    /// one client serves all of them.
     /// </summary>
     /// <remarks>
     /// Thread-safe: concurrent calls share the cache, and one download per symbol-day runs at a time within the process, across clients on

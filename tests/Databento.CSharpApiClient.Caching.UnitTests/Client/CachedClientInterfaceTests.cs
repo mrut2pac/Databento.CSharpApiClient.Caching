@@ -30,7 +30,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         [TestMethod]
         public void Interface_HoldsAsyncCallsForSeveralSymbolsWithACacheMode()
         {
-            MethodInfo[] calls = typeof(ICachedDatabentoClient).GetMethods().Where(method => method.Name.StartsWith("Get", StringComparison.Ordinal)).ToArray();
+            MethodInfo[] calls = typeof(ICachedDatabentoClient).GetMethods().Where(TakesACacheMode).ToArray();
             Type[] parameters = { typeof(string), typeof(IReadOnlyList<string>), typeof(DateTimeOffset), typeof(DateTimeOffset), typeof(CacheMode), typeof(CancellationToken) };
 
             Assert.AreEqual(11, calls.Length);
@@ -44,15 +44,15 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             List<MethodInfo> calls = typeof(CachedDatabentoClient).GetMethods(BindingFlags.Public | BindingFlags.Instance)
                 .Where(method => method.DeclaringType == typeof(CachedDatabentoClient) && method.Name != nameof(IDisposable.Dispose) && !method.IsSpecialName)
                 .ToList();
-            IEnumerable<MethodInfo> batchCalls = typeof(ICachedDatabentoClient).GetMethods().Where(method => !method.IsSpecialName)
+            IEnumerable<MethodInfo> otherCalls = typeof(ICachedDatabentoClient).GetMethods()
                 .Concat(Extensions(typeof(CachedDatabentoClientExtensions)))
-                .Where(method => !method.Name.StartsWith("Get", StringComparison.Ordinal));
-            List<MethodInfo> offered = OfferedCachedCalls().Concat(batchCalls).ToList();
+                .Where(method => !method.IsSpecialName && !TakesACacheMode(method));
+            List<MethodInfo> offered = OfferedCachedCalls().Concat(otherCalls).ToList();
 
             List<string> missing = calls.Where(call => !offered.Any(member => member.Name == call.Name && OwnParameters(member).SequenceEqual(Parameters(call)))).Select(Signature).ToList();
             List<string> extra = offered.Where(member => !calls.Any(call => call.Name == member.Name && OwnParameters(member).SequenceEqual(Parameters(call)))).Select(Signature).ToList();
 
-            Assert.AreEqual(48, calls.Count, "44 time-series calls and the batch calls, async and sync");
+            Assert.AreEqual(72, calls.Count, "44 time-series calls, the batch calls and 12 metadata and symbology calls, async and sync");
             Assert.AreEqual(0, missing.Count, "Not offered: " + string.Join("; ", missing));
             Assert.AreEqual(0, extra.Count, "Not on the client: " + string.Join("; ", extra));
         }
@@ -238,8 +238,13 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         /// </summary>
         private static IEnumerable<MethodInfo> OfferedCachedCalls()
         {
-            return typeof(ICachedDatabentoClient).GetMethods().Where(method => method.Name.StartsWith("Get", StringComparison.Ordinal))
-                .Concat(Extensions(typeof(CachedDatabentoClientExtensions)).Where(method => method.Name.StartsWith("Get", StringComparison.Ordinal)));
+            return typeof(ICachedDatabentoClient).GetMethods().Where(TakesACacheMode)
+                .Concat(Extensions(typeof(CachedDatabentoClientExtensions)).Where(TakesACacheMode));
+        }
+
+        private static bool TakesACacheMode(MethodInfo call)
+        {
+            return call.GetParameters().Any(parameter => parameter.ParameterType == typeof(CacheMode));
         }
 
         /// <summary>

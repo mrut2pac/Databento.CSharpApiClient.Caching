@@ -6,12 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.DataModel;
+using Databento.CSharpApiClient.DataModel.Metadata;
+using Databento.CSharpApiClient.DataModel.Symbology;
 
 namespace Databento.CSharpApiClient.Caching
 {
     /// <summary>
     /// The calls of <see cref="CachedDatabentoClient"/>: the client's time-series calls with a <see cref="CacheMode"/>, the batch jobs,
-    /// and the event for unreadable archive files. Code written against it can be handed a fake in tests. As an
+    /// Databento's metadata and symbology calls, passed through uncached, and the event for unreadable archive files. Code written against it can be handed a fake in tests. As an
     /// <see cref="IDatabentoTimeseriesClient"/> it serves every call with <see cref="CacheMode.Use"/>, so code that takes either client
     /// takes the cache too. <see cref="CachedDatabentoClientExtensions"/> adds the one-symbol and synchronous forms of each call.
     /// </summary>
@@ -236,6 +238,151 @@ namespace Databento.CSharpApiClient.Caching
         Task<IStatisticsRecord[]> IDatabentoTimeseriesClient.GetStatisticsAsync(string dataset, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken)
         {
             return this.GetStatisticsAsync(dataset, symbols, startUtc, endUtc, CacheMode.Use, cancellationToken);
+        }
+
+        /// <summary>
+        /// Lists the datasets the API key can reach: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The dataset codes</returns>
+        Task<string[]> ListDatasetsAsync(CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ListDatasetsAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Lists the schemas of a dataset: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The schema names</returns>
+        Task<string[]> ListSchemasAsync(string dataset, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ListSchemasAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Lists Databento's publishers: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Each publisher: its id, dataset and venue</returns>
+        Task<PublisherInfo[]> ListPublishersAsync(CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ListPublishersAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Lists the fields of a schema, with their types: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="schema">Databento schema, e.g. <c>trades</c></param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Each field's name and type</returns>
+        Task<FieldInfo[]> ListFieldsAsync(string schema, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ListFieldsAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Lists a dataset's unit prices, per schema: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The unit prices of each feed mode</returns>
+        Task<UnitPriceInfo[]> ListUnitPricesAsync(string dataset, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ListUnitPricesAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Gets a dataset's data-quality condition on one day, or <c>null</c> when the dataset has no entry for it. Without a date it is the latest day's, which downloads the dataset's whole daily history: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="dateStr">ISO-8601 date, e.g. <c>2026-01-15</c>; <c>null</c> for the latest day</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The day's condition, or <c>null</c></returns>
+        Task<DatasetCondition> GetDatasetConditionAsync(string dataset, string dateStr = null, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("GetDatasetConditionAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Gets the range a dataset holds data for, and each schema's: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The dataset's range and each schema's</returns>
+        Task<DateRange> GetDatasetRangeAsync(string dataset, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("GetDatasetRangeAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Lists a dataset's daily data-quality conditions, oldest first: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="startDateStr">ISO-8601 first date, inclusive, or <c>null</c></param>
+        /// <param name="endDateStr">ISO-8601 last date, inclusive, or <c>null</c></param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Each day's condition</returns>
+        Task<DatasetCondition[]> ListConditionsAsync(string dataset, string startDateStr = null, string endDateStr = null, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ListConditionsAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Gets the number of records a query would return, without downloading it: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="symbols">Instrument symbols</param>
+        /// <param name="schema">Databento schema, e.g. <c>cbbo-1m</c></param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The record count</returns>
+        Task<long> GetRecordCountAsync(string dataset, IReadOnlyList<string> symbols, string schema, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("GetRecordCountAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Gets the billable uncompressed size of a query in bytes, without downloading it: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="symbols">Instrument symbols</param>
+        /// <param name="schema">Databento schema, e.g. <c>cbbo-1m</c></param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The size in bytes</returns>
+        Task<long> GetBillableSizeAsync(string dataset, IReadOnlyList<string> symbols, string schema, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("GetBillableSizeAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Gets what a query would cost in USD, without downloading it: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="symbols">Instrument symbols</param>
+        /// <param name="schema">Databento schema, e.g. <c>cbbo-1m</c></param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The cost in USD</returns>
+        Task<double> GetCostAsync(string dataset, IReadOnlyList<string> symbols, string schema, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("GetCostAsync is not implemented.");
+        }
+
+        /// <summary>
+        /// Resolves symbols from one symbology type to another over a date range: Databento's own answer, not cached
+        /// </summary>
+        /// <param name="request">What to resolve: dataset, symbols, symbol types and dates</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Each symbol's mappings, and the symbols not found</returns>
+        Task<SymbologyResolution> ResolveSymbolsAsync(SymbologyRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("ResolveSymbolsAsync is not implemented.");
         }
     }
 }
