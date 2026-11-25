@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Databento's metadata and symbology calls on the cached client, passed through uncached: `ListDatasets`, `ListSchemas`, `ListPublishers`, `ListFields`, `ListUnitPrices`, `GetDatasetCondition`, `GetDatasetRange`, `ListConditions`, `GetRecordCount`, `GetBillableSize`, `GetCost` and `ResolveSymbols`, so one client serves both the cached time series and the rest of the API.
+  - On `ICachedDatabentoClient` as async calls with default implementations that throw `NotSupportedException`, so outside implementations keep compiling; their synchronous forms are in `CachedDatabentoClientExtensions`.
+
+### Changed
+- Built on `Databento.CSharpApiClient` 2.7.1.
+- The cached client creates its DBN client only when `Transport` is `Dbn`; with the default `Json` it held an unused one, with its own `HttpClient`.
+
 ## [1.2.0] - 2026-11-25
 
 ### Added

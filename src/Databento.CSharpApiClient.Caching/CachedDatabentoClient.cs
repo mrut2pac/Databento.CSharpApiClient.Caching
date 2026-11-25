@@ -11,7 +11,8 @@ namespace Databento.CSharpApiClient.Caching
     /// The Databento client's time-series calls, served from a disk cache: each UTC day a range touches, per symbol, from its day file, else
     /// from the archive the compactor builds, else downloaded whole and saved as a day file before the call returns, once Databento says the
     /// day is final. So each symbol-day is paid for once. The calls take the client's arguments plus a <see cref="CacheMode"/>, and return
-    /// the record interfaces, in time order, trimmed to the range.
+    /// the record interfaces, in time order, trimmed to the range. Databento's metadata and symbology calls are passed through uncached, so
+    /// one client serves all of them.
     /// </summary>
     /// <remarks>
     /// Thread-safe: concurrent calls share the cache, and one download per symbol-day runs at a time within the process, across clients on
@@ -23,6 +24,9 @@ namespace Databento.CSharpApiClient.Caching
     {
         private readonly DatabentoJsonClient jsonClient;
 
+        /// <summary>
+        /// The DBN client the records are downloaded with, or null when they are downloaded as JSON
+        /// </summary>
         private readonly DatabentoClient dbnClient;
 
         private readonly CachedTimeseries timeseries;
@@ -51,7 +55,7 @@ namespace Databento.CSharpApiClient.Caching
             CacheMetadata.Read(settings.CacheRoot);
 
             this.jsonClient = new DatabentoJsonClient(settings.Databento, transport);
-            this.dbnClient = new DatabentoClient(settings.Databento, transport);
+            this.dbnClient = settings.Transport == DatabentoTransport.Dbn ? new DatabentoClient(settings.Databento, transport) : null;
             ArchiveCatalog catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable);
             SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, catalog);
             DatasetAvailability availability = new DatasetAvailability();
@@ -67,12 +71,17 @@ namespace Databento.CSharpApiClient.Caching
         public event EventHandler<ArchiveFileUnreadableEventArgs> ArchiveFileUnreadable;
 
         /// <summary>
+        /// Gets the DBN client the records are downloaded with, or null when they are downloaded as JSON, for tests
+        /// </summary>
+        internal DatabentoClient DbnClient => this.dbnClient;
+
+        /// <summary>
         /// Releases the Databento clients and their HTTP transport
         /// </summary>
         public void Dispose()
         {
             this.jsonClient.Dispose();
-            this.dbnClient.Dispose();
+            this.dbnClient?.Dispose();
         }
 
         private static CachedDatabentoClientOptions CopyChecked(CachedDatabentoClientOptions options)

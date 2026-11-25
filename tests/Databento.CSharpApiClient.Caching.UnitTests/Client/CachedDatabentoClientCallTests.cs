@@ -62,7 +62,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         public void EveryPublicCall_IsCovered()
         {
             int covered = Calls.Values.Sum(calls => calls.Length);
-            int calls = typeof(CachedDatabentoClient).GetMethods().Count(method => method.DeclaringType == typeof(CachedDatabentoClient) && method.Name.StartsWith("Get", StringComparison.Ordinal));
+            int calls = typeof(CachedDatabentoClient).GetMethods().Count(method => method.DeclaringType == typeof(CachedDatabentoClient) && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(CacheMode)));
 
             Assert.AreEqual(calls, covered);
         }

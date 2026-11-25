@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.DataModel;
+using Databento.CSharpApiClient.DataModel.Metadata;
+using Databento.CSharpApiClient.DataModel.Symbology;
 
 namespace Databento.CSharpApiClient.Caching
 {
@@ -573,6 +575,163 @@ namespace Databento.CSharpApiClient.Caching
         {
             ArgumentNullException.ThrowIfNull(client);
             return client.IngestBatchFolderAsync(folder).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Lists the datasets the API key can reach: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <returns>The dataset codes</returns>
+        public static string[] ListDatasets(this ICachedDatabentoClient client)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.ListDatasetsAsync().GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Lists the schemas of a dataset: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <returns>The schema names</returns>
+        public static string[] ListSchemas(this ICachedDatabentoClient client, string dataset)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.ListSchemasAsync(dataset).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Lists Databento's publishers: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <returns>Each publisher: its id, dataset and venue</returns>
+        public static PublisherInfo[] ListPublishers(this ICachedDatabentoClient client)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.ListPublishersAsync().GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Lists the fields of a schema, with their types: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="schema">Databento schema, e.g. <c>trades</c></param>
+        /// <returns>Each field's name and type</returns>
+        public static FieldInfo[] ListFields(this ICachedDatabentoClient client, string schema)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.ListFieldsAsync(schema).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Lists a dataset's unit prices, per schema: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <returns>The unit prices of each feed mode</returns>
+        public static UnitPriceInfo[] ListUnitPrices(this ICachedDatabentoClient client, string dataset)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.ListUnitPricesAsync(dataset).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Gets a dataset's data-quality condition on one day, or <c>null</c> when the dataset has no entry for it. Without a date it is the latest day's, which downloads the dataset's whole daily history: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="dateStr">ISO-8601 date, e.g. <c>2026-01-15</c>; <c>null</c> for the latest day</param>
+        /// <returns>The day's condition, or <c>null</c></returns>
+        public static DatasetCondition GetDatasetCondition(this ICachedDatabentoClient client, string dataset, string dateStr = null)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.GetDatasetConditionAsync(dataset, dateStr).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Gets the range a dataset holds data for, and each schema's: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <returns>The dataset's range and each schema's</returns>
+        public static DateRange GetDatasetRange(this ICachedDatabentoClient client, string dataset)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.GetDatasetRangeAsync(dataset).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Lists a dataset's daily data-quality conditions, oldest first: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="startDateStr">ISO-8601 first date, inclusive, or <c>null</c></param>
+        /// <param name="endDateStr">ISO-8601 last date, inclusive, or <c>null</c></param>
+        /// <returns>Each day's condition</returns>
+        public static DatasetCondition[] ListConditions(this ICachedDatabentoClient client, string dataset, string startDateStr = null, string endDateStr = null)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.ListConditionsAsync(dataset, startDateStr, endDateStr).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Gets the number of records a query would return, without downloading it: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="symbols">Instrument symbols</param>
+        /// <param name="schema">Databento schema, e.g. <c>cbbo-1m</c></param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <returns>The record count</returns>
+        public static long GetRecordCount(this ICachedDatabentoClient client, string dataset, IReadOnlyList<string> symbols, string schema, DateTimeOffset startUtc, DateTimeOffset endUtc)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.GetRecordCountAsync(dataset, symbols, schema, startUtc, endUtc).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Gets the billable uncompressed size of a query in bytes, without downloading it: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="symbols">Instrument symbols</param>
+        /// <param name="schema">Databento schema, e.g. <c>cbbo-1m</c></param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <returns>The size in bytes</returns>
+        public static long GetBillableSize(this ICachedDatabentoClient client, string dataset, IReadOnlyList<string> symbols, string schema, DateTimeOffset startUtc, DateTimeOffset endUtc)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.GetBillableSizeAsync(dataset, symbols, schema, startUtc, endUtc).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Gets what a query would cost in USD, without downloading it: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="symbols">Instrument symbols</param>
+        /// <param name="schema">Databento schema, e.g. <c>cbbo-1m</c></param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <returns>The cost in USD</returns>
+        public static double GetCost(this ICachedDatabentoClient client, string dataset, IReadOnlyList<string> symbols, string schema, DateTimeOffset startUtc, DateTimeOffset endUtc)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.GetCostAsync(dataset, symbols, schema, startUtc, endUtc).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Resolves symbols from one symbology type to another over a date range: Databento's own answer, not cached, synchronously
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="request">What to resolve: dataset, symbols, symbol types and dates</param>
+        /// <returns>Each symbol's mappings, and the symbols not found</returns>
+        public static SymbologyResolution ResolveSymbols(this ICachedDatabentoClient client, SymbologyRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.ResolveSymbolsAsync(request).GetAwaiter().GetResult();
         }
     }
 }

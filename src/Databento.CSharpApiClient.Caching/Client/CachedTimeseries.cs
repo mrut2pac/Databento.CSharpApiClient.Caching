@@ -26,6 +26,9 @@ namespace Databento.CSharpApiClient.Caching.Client
 
         private readonly DatabentoJsonClient jsonClient;
 
+        /// <summary>
+        /// The DBN client, or null when <see cref="CachedDatabentoClientOptions.Transport"/> is JSON, which never reads it
+        /// </summary>
         private readonly DatabentoClient dbnClient;
 
         private readonly SymbolDayStore store;
