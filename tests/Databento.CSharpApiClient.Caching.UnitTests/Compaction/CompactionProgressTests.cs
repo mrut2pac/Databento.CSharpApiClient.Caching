@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Compaction;
+using Databento.CSharpApiClient.DataModel;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -15,7 +16,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Compaction
 
         private const int DayFiles = 42_470;
 
-        private static readonly string Folder = Path.Combine("OPRA.PILLAR", "cbbo-1m", "2022", "02");
+        private static readonly string Folder = Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2022", "02");
 
         [TestMethod]
         public void StartGroup_FirstGroup_IsEstimating()

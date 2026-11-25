@@ -17,7 +17,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [DataRow("SPXW1 261016C06600000", "SPXW1.OPT")]
         public void Of_OpraOsiSymbol_IsItsRootAsAnOptionGroup(string rawSymbol, string expectedGroup)
         {
-            Assert.AreEqual(expectedGroup, ArchiveGroup.Of("OPRA.PILLAR", rawSymbol));
+            Assert.AreEqual(expectedGroup, ArchiveGroup.Of(Datasets.OpraPillar, rawSymbol));
         }
 
         [TestMethod]
@@ -38,7 +38,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [DataRow("SPXW  261016C066000000", DisplayName = "one character too many")]
         public void Of_OpraSymbolThatIsNotOsi_IsTheSymbolItself(string rawSymbol)
         {
-            Assert.AreEqual(rawSymbol, ArchiveGroup.Of("OPRA.PILLAR", rawSymbol));
+            Assert.AreEqual(rawSymbol, ArchiveGroup.Of(Datasets.OpraPillar, rawSymbol));
         }
 
         [TestMethod]
@@ -48,7 +48,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [DataRow("GCF0", "GC.FUT")]
         public void Of_GlobexContractMonth_IsItsRootAsAFutureGroup(string rawSymbol, string expectedGroup)
         {
-            Assert.AreEqual(expectedGroup, ArchiveGroup.Of("GLBX.MDP3", rawSymbol));
+            Assert.AreEqual(expectedGroup, ArchiveGroup.Of(Datasets.GlbxMdp3, rawSymbol));
         }
 
         [TestMethod]
@@ -61,17 +61,17 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [DataRow("/MNQ_2612", DisplayName = "another symbology")]
         public void Of_GlobexSymbolThatIsNoContractMonth_IsTheSymbolItself(string rawSymbol)
         {
-            Assert.AreEqual(rawSymbol, ArchiveGroup.Of("GLBX.MDP3", rawSymbol));
+            Assert.AreEqual(rawSymbol, ArchiveGroup.Of(Datasets.GlbxMdp3, rawSymbol));
         }
 
         [TestMethod]
-        [DataRow("XNAS.ITCH", "QQQ")]
-        [DataRow("XNAS.ITCH", "BRK.B")]
-        [DataRow("DBIX.CORE", "SPX")]
-        [DataRow("XNAS.ITCH", "SPXW  261016C06600000")]
-        [DataRow("XNAS.ITCH", "MNQZ6")]
-        [DataRow("OPRA.PILLAR", "MNQZ6")]
-        [DataRow("GLBX.MDP3", "SPXW  261016C06600000")]
+        [DataRow(Datasets.XnasItch, "QQQ")]
+        [DataRow(Datasets.XnasItch, "BRK.B")]
+        [DataRow(Datasets.DbixCore, "SPX")]
+        [DataRow(Datasets.XnasItch, "SPXW  261016C06600000")]
+        [DataRow(Datasets.XnasItch, "MNQZ6")]
+        [DataRow(Datasets.OpraPillar, "MNQZ6")]
+        [DataRow(Datasets.GlbxMdp3, "SPXW  261016C06600000")]
         [DataRow("OPRAX.PILLAR", "SPXW  261016C06600000")]
         public void Of_SymbolOfAnotherDatasetsSymbology_IsTheSymbolItself(string dataset, string rawSymbol)
         {
@@ -83,9 +83,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         public void Of_NoDatasetOrSymbol_Throws()
         {
             Assert.ThrowsException<ArgumentException>(() => ArchiveGroup.Of(string.Empty, "QQQ"));
-            Assert.ThrowsException<ArgumentException>(() => ArchiveGroup.Of("XNAS.ITCH", string.Empty));
+            Assert.ThrowsException<ArgumentException>(() => ArchiveGroup.Of(Datasets.XnasItch, string.Empty));
             Assert.ThrowsException<ArgumentNullException>(() => ArchiveGroup.Of(null, "QQQ"));
-            Assert.ThrowsException<ArgumentNullException>(() => ArchiveGroup.Of("XNAS.ITCH", null));
+            Assert.ThrowsException<ArgumentNullException>(() => ArchiveGroup.Of(Datasets.XnasItch, null));
         }
     }
 }

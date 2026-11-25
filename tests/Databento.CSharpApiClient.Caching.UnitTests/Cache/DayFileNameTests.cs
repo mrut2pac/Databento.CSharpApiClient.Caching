@@ -2,6 +2,7 @@ using System;
 using System.IO;
 
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.DataModel;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -70,7 +71,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Cache
         {
             string root = Path.Combine(Path.GetTempPath(), "cache");
 
-            Assert.AreEqual(Path.Combine(root, "OPRA.PILLAR", "cbbo-1m", "2026", "07"), DayFileName.GetMonthDirectory(root, "OPRA.PILLAR", "cbbo-1m", 2026, 7));
+            Assert.AreEqual(Path.Combine(root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "07"), DayFileName.GetMonthDirectory(root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, 2026, 7));
         }
     }
 }

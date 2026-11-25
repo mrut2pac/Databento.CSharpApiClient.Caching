@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Databento.CSharpApiClient.DataModel;
+
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Databento.CSharpApiClient.Caching.UnitTests
@@ -28,7 +30,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 [(Put, new DateOnly(2026, 10, 16))] = "2 quotes",
             };
 
-            ArchiveGroupDays days = new ArchiveGroupDays("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, new[] { CallDay, PutDay }, new[] { PutDay }, summaries);
+            ArchiveGroupDays days = new ArchiveGroupDays(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, new[] { CallDay, PutDay }, new[] { PutDay }, summaries);
 
             Assert.AreEqual("OPRA.PILLAR", days.Dataset);
             Assert.AreEqual("cbbo-1m", days.Schema);
@@ -47,7 +49,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             ArchiveDay[] servedDays = { CallDay, PutDay };
             List<ArchiveDay> dayFileDays = new List<ArchiveDay> { PutDay };
             Dictionary<(string Symbol, DateOnly Date), object> summaries = new Dictionary<(string Symbol, DateOnly Date), object>();
-            ArchiveGroupDays days = new ArchiveGroupDays("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, servedDays, dayFileDays, summaries);
+            ArchiveGroupDays days = new ArchiveGroupDays(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, servedDays, dayFileDays, summaries);
 
             servedDays[0] = PutDay;
             dayFileDays.Add(CallDay);
@@ -73,8 +75,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         [DataRow("no summaries")]
         public void Constructor_ArgumentMissingOrOutOfRange_Throws(string argument)
         {
-            string dataset = argument == "no dataset" ? null : "OPRA.PILLAR";
-            string schema = argument == "an empty schema" ? string.Empty : "cbbo-1m";
+            string dataset = argument == "no dataset" ? null : Datasets.OpraPillar;
+            string schema = argument == "an empty schema" ? string.Empty : Schema.ConsolidatedBBO1Min;
             string group = argument == "no group" ? null : "SPXW.OPT";
             int year = argument == "year 0" ? 0 : 2026;
             int month = argument switch

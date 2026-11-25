@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 
 using Databento.CSharpApiClient.Caching.Archive;
+using Databento.CSharpApiClient.DataModel;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -17,7 +18,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
 
         private const string Header = "{\"format_version\":1,\"dataset\":\"OPRA.PILLAR\",\"schema\":\"cbbo-1m\",\"group\":\"SPXW.OPT\",\"month\":\"2026-10\",\"cutoff\":\"UTC\",\"built_utc\":\"2026-11-18T02:15:00Z\"";
 
-        private static readonly ArchiveFileIdentity Identity = new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, "UTC", new DateTime(2026, 11, 18, 2, 15, 0, DateTimeKind.Utc));
+        private static readonly ArchiveFileIdentity Identity = new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, "UTC", new DateTime(2026, 11, 18, 2, 15, 0, DateTimeKind.Utc));
 
         [TestMethod]
         public void TryLocate_RowsFollowSymbolThenDayOrder_WhateverTheInputOrder()
@@ -97,7 +98,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [TestMethod]
         public void Constructor_DayPastTheEndOfAShortMonth_Throws()
         {
-            ArchiveFileIdentity february = new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 2, "UTC", Identity.BuiltUtc);
+            ArchiveFileIdentity february = new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 2, "UTC", Identity.BuiltUtc);
 
             Assert.ThrowsException<ArgumentException>(() => new ArchiveIndex(february, new[] { new ArchiveIndexEntry(Call, 29, 3) }));
         }
@@ -151,7 +152,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [TestMethod]
         public void FromJson_DeltaRoundTrip_KeepsItsKindAndGeneration()
         {
-            ArchiveFileIdentity delta = new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, "UTC", Identity.BuiltUtc, 3);
+            ArchiveFileIdentity delta = new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, "UTC", Identity.BuiltUtc, 3);
             ArchiveIndex index = new ArchiveIndex(delta, new[] { new ArchiveIndexEntry(Call, 15, 3) });
 
             string json = index.ToJson();

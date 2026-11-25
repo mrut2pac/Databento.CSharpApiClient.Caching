@@ -28,9 +28,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
     /// </summary>
     internal sealed class CacheFixture : IDisposable
     {
-        public const string Opra = "OPRA.PILLAR";
+        public const string Opra = Datasets.OpraPillar;
 
-        public const string Cbbo = "cbbo-1m";
+        public const string Cbbo = Schema.ConsolidatedBBO1Min;
 
         public CacheFixture()
         {

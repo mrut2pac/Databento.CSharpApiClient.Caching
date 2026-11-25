@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 
 using Databento.CSharpApiClient.Caching.Archive;
+using Databento.CSharpApiClient.DataModel;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -36,8 +37,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [TestMethod]
         public void GetSearchPrefix_GroupMonth_NamesEverythingUpToTheBuildTime()
         {
-            Assert.AreEqual(Prefix, ArchiveFileName.GetSearchPrefix("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, "UTC"));
-            Assert.AreEqual("XNAS.ITCH_ohlcv-1d_BRK%20B_2026-03.UTC_", ArchiveFileName.GetSearchPrefix("XNAS.ITCH", "ohlcv-1d", "BRK B", 2026, 3, "UTC"));
+            Assert.AreEqual(Prefix, ArchiveFileName.GetSearchPrefix(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, "UTC"));
+            Assert.AreEqual("XNAS.ITCH_ohlcv-1d_BRK%20B_2026-03.UTC_", ArchiveFileName.GetSearchPrefix(Datasets.XnasItch, Schema.Ohlcv1Day, "BRK B", 2026, 3, "UTC"));
         }
 
         [TestMethod]
@@ -135,11 +136,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
             DateTime later = BuiltUtc.AddDays(1);
             this.Touch(ArchiveFileName.GetTemporaryFileName(Identity(later).FileName));
             this.Touch(ArchiveFileName.GetTemporaryFileName(Identity(BuiltUtc, 1).FileName));
-            this.Touch(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPX.OPT", 2026, 10, "UTC", later).FileName);
-            this.Touch(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1s", "SPXW.OPT", 2026, 10, "UTC", later).FileName);
-            this.Touch(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 9, "UTC", later).FileName);
-            this.Touch(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, "ET", later).FileName);
-            this.Touch(new ArchiveFileIdentity("OPRA.TEST", "cbbo-1m", "SPXW.OPT", 2026, 10, "UTC", later).FileName);
+            this.Touch(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPX.OPT", 2026, 10, "UTC", later).FileName);
+            this.Touch(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Sec, "SPXW.OPT", 2026, 10, "UTC", later).FileName);
+            this.Touch(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 9, "UTC", later).FileName);
+            this.Touch(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, "ET", later).FileName);
+            this.Touch(new ArchiveFileIdentity("OPRA.TEST", Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, "UTC", later).FileName);
             this.Touch(Prefix + "notatimestamp.full.parquet");
             this.Touch(Prefix + "20261119T021500.parquet");
             this.Touch(Prefix + "20261119T021500.FULL.parquet");
@@ -174,7 +175,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
                 this.Touch(Identity(BuiltUtc.AddDays(2), 1).FileName),
             };
             this.Touch(ArchiveFileName.GetTemporaryFileName(Identity(BuiltUtc.AddDays(3)).FileName));
-            this.Touch(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPX.OPT", 2026, 10, "UTC", BuiltUtc).FileName);
+            this.Touch(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPX.OPT", 2026, 10, "UTC", BuiltUtc).FileName);
 
             string[] files = ArchiveFileName.FindFiles(this.ListFiles(), Prefix).ToArray();
 
@@ -188,7 +189,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
             this.Touch(Identity(BuiltUtc).FileName);
             this.Touch(Identity(BuiltUtc.AddDays(2), 1).FileName);
             this.Touch(ArchiveFileName.GetTemporaryFileName(Identity(BuiltUtc.AddDays(3)).FileName));
-            this.Touch(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPX.OPT", 2026, 10, "UTC", BuiltUtc.AddDays(4)).FileName);
+            this.Touch(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPX.OPT", 2026, 10, "UTC", BuiltUtc.AddDays(4)).FileName);
 
             Assert.AreEqual(new DateTime(2026, 11, 20, 2, 15, 0, DateTimeKind.Utc), ArchiveFileName.FindLatestBuildTime(this.ListFiles(), Prefix));
             Assert.IsNull(ArchiveFileName.FindLatestBuildTime(this.ListFiles(), "OPRA.PILLAR_cbbo-1m_NDXP.OPT_2026-10.UTC_"));
@@ -204,8 +205,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
             };
             string[] others =
             {
-                ArchiveFileName.GetTemporaryFileName(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPX.OPT", 2026, 10, "UTC", BuiltUtc).FileName),
-                ArchiveFileName.GetTemporaryFileName(new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 9, "UTC", BuiltUtc).FileName),
+                ArchiveFileName.GetTemporaryFileName(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPX.OPT", 2026, 10, "UTC", BuiltUtc).FileName),
+                ArchiveFileName.GetTemporaryFileName(new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 9, "UTC", BuiltUtc).FileName),
                 Identity(BuiltUtc).FileName,
                 "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz.0123456789abcdef0123456789abcdef.tmp",
                 Prefix + "notatimestamp.full.parquet.0123456789abcdef0123456789abcdef.tmp",
@@ -237,7 +238,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
 
             foreach(string fileName in fileNames)
             {
-                Assert.IsTrue(ArchiveFileName.TryParseGroup(fileName, "OPRA.PILLAR", "cbbo-1m", 2026, 10, "UTC", out string group), fileName);
+                Assert.IsTrue(ArchiveFileName.TryParseGroup(fileName, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, 2026, 10, "UTC", out string group), fileName);
                 Assert.AreEqual("SPXW.OPT", group, fileName);
             }
         }
@@ -245,7 +246,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [TestMethod]
         public void TryParseGroup_EscapedGroup_IsUnescaped()
         {
-            Assert.IsTrue(ArchiveFileName.TryParseGroup("XNAS.ITCH_ohlcv-1d_BRK%20B_2026-10.UTC_20261118T021500.full.parquet", "XNAS.ITCH", "ohlcv-1d", 2026, 10, "UTC", out string group));
+            Assert.IsTrue(ArchiveFileName.TryParseGroup("XNAS.ITCH_ohlcv-1d_BRK%20B_2026-10.UTC_20261118T021500.full.parquet", Datasets.XnasItch, Schema.Ohlcv1Day, 2026, 10, "UTC", out string group));
 
             Assert.AreEqual("BRK B", group);
         }
@@ -267,13 +268,13 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         [DataRow("x.parquet..tmp", DisplayName = "a temporary file of no archive file and no guid")]
         public void TryParseGroup_NoArchiveFileOfTheFolder_ReturnsFalse(string fileName)
         {
-            Assert.IsFalse(ArchiveFileName.TryParseGroup(fileName, "OPRA.PILLAR", "cbbo-1m", 2026, 10, "UTC", out string group));
+            Assert.IsFalse(ArchiveFileName.TryParseGroup(fileName, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, 2026, 10, "UTC", out string group));
             Assert.IsNull(group);
         }
 
         private static ArchiveFileIdentity Identity(DateTime builtUtc, int generation = 0)
         {
-            return new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, "UTC", builtUtc, generation);
+            return new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, "UTC", builtUtc, generation);
         }
 
         private string Touch(string fileName)

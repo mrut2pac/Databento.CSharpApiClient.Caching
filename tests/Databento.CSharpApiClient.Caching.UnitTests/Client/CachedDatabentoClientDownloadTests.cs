@@ -36,13 +36,13 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
                 fixture.Databento.Conditions[Day] = "degraded";
 
-                ICbboRecord[] first = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                ICbboRecord[] first = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
                 fixture.Databento.Conditions.Remove(Day);
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                 Assert.AreEqual(1, first.Length);
                 Assert.AreEqual(2, fixture.Databento.TimeseriesRequests.Count);
@@ -57,9 +57,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
                 fixture.Databento.AvailableEndUtc = Day.AddHours(18);
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                 Assert.AreEqual(1, served.Length);
                 Assert.AreEqual(DayStart.AddHours(18), fixture.Databento.TimeseriesRequests[0].EndUtc);
@@ -73,18 +73,18 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient(options => options.EmptyDays = EmptyDayPolicy.CacheAlways))
             {
-                fixture.Databento.SchemaEnds["cbbo-1s"] = Day.AddHours(12);
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1));
-                fixture.Databento.Add("cbbo-1s", OneSecond(Call, Day.AddHours(9)));
+                fixture.Databento.SchemaEnds[Schema.ConsolidatedBBO1Sec] = Day.AddHours(12);
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Sec, OneSecond(Call, Day.AddHours(9)));
 
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
-                ICbboRecord[] served = await client.GetCbbo1sAsync("OPRA.PILLAR", new[] { Call, Put }, DayStart, DayEnd);
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1sAsync(Datasets.OpraPillar, new[] { Call, Put }, DayStart, DayEnd);
 
                 Assert.AreEqual(1, fixture.ReadCbboDayFile(Call, Day).Length);
                 Assert.AreEqual(1, served.Length);
                 Assert.AreEqual(DayStart.AddHours(12), fixture.Databento.TimeseriesRequests[1].EndUtc);
-                Assert.IsNull(fixture.ReadCbboDayFile(Call, Day, "cbbo-1s"));
-                Assert.IsNull(fixture.ReadCbboDayFile(Put, Day, "cbbo-1s"));
+                Assert.IsNull(fixture.ReadCbboDayFile(Call, Day, Schema.ConsolidatedBBO1Sec));
+                Assert.IsNull(fixture.ReadCbboDayFile(Put, Day, Schema.ConsolidatedBBO1Sec));
             }
         }
 
@@ -96,7 +96,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.AvailableEndUtc = Day;
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                 Assert.AreEqual(0, served.Length);
                 Assert.AreEqual(0, fixture.Databento.TimeseriesRequests.Count);
@@ -112,8 +112,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Listings[Call] = new[] { Day.AddDays(1), Day.AddDays(10) };
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayStart.AddDays(2));
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayStart.AddDays(2));
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayStart.AddDays(2));
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayStart.AddDays(2));
 
                 Assert.AreEqual(0, served.Length);
                 Assert.AreEqual(0, fixture.ReadCbboDayFile(Call, Day).Length);
@@ -129,7 +129,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                 Assert.IsNull(fixture.ReadCbboDayFile(Call, Day));
                 Assert.AreEqual(1, fixture.Databento.SymbologyRequests.Count);
@@ -145,7 +145,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Databento.Listings[Call] = new[] { Day.AddDays(1), Day.AddDays(10) };
                 fixture.Databento.Respond = request => request.Path == "symbology.resolve" ? FakeDatabento.Error(HttpStatusCode.InternalServerError, "internal") : null;
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                 Assert.AreEqual(0, served.Length);
                 Assert.IsNull(fixture.ReadCbboDayFile(Call, Day));
@@ -158,7 +158,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient(options => options.EmptyDays = EmptyDayPolicy.CacheAlways))
             {
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                 Assert.AreEqual(0, fixture.ReadCbboDayFile(Call, Day).Length);
                 Assert.AreEqual(0, fixture.Databento.SymbologyRequests.Count);
@@ -171,9 +171,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient(options => options.EmptyDays = EmptyDayPolicy.Never))
             {
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, Unlisted }, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, Unlisted }, DayStart, DayEnd);
 
                 Assert.AreEqual(1, served.Length);
                 Assert.AreEqual(1, fixture.ReadCbboDayFile(Call, Day).Length);
@@ -187,9 +187,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1), Cbbo(Put, Day, 2));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1), Cbbo(Put, Day, 2));
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, Unlisted, Put }, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, Unlisted, Put }, DayStart, DayEnd);
 
                 CollectionAssert.AreEqual(new[] { Call, Put }, served.Select(record => record.Symbol).ToArray());
                 Assert.AreEqual(2, fixture.Databento.TimeseriesRequests.Count);
@@ -205,7 +205,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Unlisted, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Unlisted, DayStart, DayEnd);
 
                 Assert.AreEqual(0, served.Length);
                 Assert.AreEqual(1, fixture.Databento.TimeseriesRequests.Count);
@@ -221,7 +221,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Respond = request => request.Path == "timeseries.get_range" ? FakeDatabento.Error(HttpStatusCode.BadRequest, "symbology_invalid_request") : null;
 
-                DatabentoHttpException thrown = await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, Put }, DayStart, DayEnd));
+                DatabentoHttpException thrown = await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, Put }, DayStart, DayEnd));
 
                 Assert.AreEqual(DatabentoErrorCase.SymbologyInvalidRequest, thrown.Code);
                 Assert.IsNull(fixture.ReadCbboDayFile(Call, Day));
@@ -239,7 +239,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"result\":{\"" + Call + "\":[{\"d0\":\"2026-10-16\",\"d1\":\"2026-10-17\",\"s\":\"1001\"}]},\"not_found\":[\"" + Unlisted + "\"],\"partial\":[],\"status\":0}") }
                     : null;
 
-                await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, Put, Unlisted }, DayStart, DayEnd));
+                await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, Put, Unlisted }, DayStart, DayEnd));
 
                 Assert.IsNull(fixture.ReadCbboDayFile(Put, Day));
                 Assert.IsNull(fixture.ReadCbboDayFile(Unlisted, Day));
@@ -254,7 +254,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Respond = request => request.Path == "timeseries.get_range" ? FakeDatabento.Error(HttpStatusCode.Forbidden, "license_not_found_unauthorized") : null;
 
-                await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd));
+                await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd));
 
                 Assert.IsFalse(Directory.Exists(fixture.Cache.CbboDirectory) && Directory.GetFiles(fixture.Cache.CbboDirectory).Length > 0);
             }
@@ -267,9 +267,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day, Cbbo(Call, Day, 1));
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 5), Cbbo(Call, Day, 6));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 5), Cbbo(Call, Day, 6));
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.Bypass);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.Bypass);
 
                 Assert.AreEqual(2, served.Length);
                 Assert.AreEqual(2, fixture.ReadCbboDayFile(Call, Day).Length);
@@ -283,10 +283,10 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
                 fixture.Cache.WriteCbboFile(new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), 0, new ArchiveSymbolDay<ICbboRecord>(Call, Day, new ICbboRecord[] { Cbbo(Call, Day, 1) }));
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 5), Cbbo(Call, Day, 6));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 5), Cbbo(Call, Day, 6));
 
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.Bypass);
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.Bypass);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                 Assert.AreEqual(2, served.Length);
                 Assert.AreEqual(1, fixture.Databento.TimeseriesRequests.Count);
@@ -301,7 +301,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day, Cbbo(Call, Day, 1));
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.Bypass);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.Bypass);
 
                 Assert.AreEqual(1, served.Length);
                 Assert.AreEqual(1, fixture.ReadCbboDayFile(Call, Day).Length);
@@ -316,7 +316,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day, Cbbo(Call, Day, 1));
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.Bypass);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.Bypass);
 
                 Assert.AreEqual(0, served.Length);
                 Assert.AreEqual(0, fixture.ReadCbboDayFile(Call, Day).Length);
@@ -332,7 +332,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day, Cbbo(Call, Day, 1));
                 fixture.Databento.Respond = request => request.Path == "timeseries.get_range" ? FakeDatabento.Error(HttpStatusCode.ServiceUnavailable, "unavailable") : null;
 
-                await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.Bypass));
+                await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.Bypass));
 
                 Assert.AreEqual(1, fixture.ReadCbboDayFile(Call, Day).Length);
             }
@@ -344,10 +344,10 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             {
                 File.Delete(Path.Combine(fixture.Cache.Root, CacheMetadata.FileName));
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
                 using(CachedDatabentoClient client = fixture.CreateClient())
                 {
-                    await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
+                    await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
                 }
 
                 Assert.AreEqual(CacheMetadata.UtcCutoff, CacheMetadata.Read(fixture.Cache.Root).DayCutoff);
@@ -396,12 +396,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", "ALL_SYMBOLS", DayStart, DayEnd));
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", new string[0], DayStart, DayEnd));
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, string.Empty }, DayStart, DayEnd));
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayEnd, DayEnd));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, "ALL_SYMBOLS", DayStart, DayEnd));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, new string[0], DayStart, DayEnd));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, string.Empty }, DayStart, DayEnd));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayEnd, DayEnd));
                 await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.GetCbbo1mAsync(string.Empty, Call, DayStart, DayEnd));
-                await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, (CacheMode)5));
+                await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, (CacheMode)5));
 
                 Assert.AreEqual(0, fixture.Databento.RequestsTo("timeseries.get_range").Count + fixture.Databento.RequestsTo("metadata.get_dataset_range").Count);
             }

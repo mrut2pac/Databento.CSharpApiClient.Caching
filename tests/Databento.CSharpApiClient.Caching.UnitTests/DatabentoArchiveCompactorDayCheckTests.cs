@@ -76,7 +76,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             ArchiveCompactionReport report = await this.CompactAsync(check);
 
             SuspectDayFile suspect = report.Suspects.Single();
-            Assert.AreEqual(Path.Combine("OPRA.PILLAR", "cbbo-1m", "2026", "10", "SPXW%20%20261016C06800000_2026-10-16.UTC.json.gz"), suspect.RelativePath);
+            Assert.AreEqual(Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016C06800000_2026-10-16.UTC.json.gz"), suspect.RelativePath);
             Assert.AreEqual(Strike(6800), suspect.Day.Symbol);
             Assert.AreEqual(new DateOnly(2026, 10, 16), suspect.Day.Date);
             Assert.AreEqual(2, suspect.Day.RecordCount);
@@ -159,11 +159,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         {
             DateTime received = new DateTime(2026, 10, 16, 13, 30, 0, DateTimeKind.Utc);
             this.cache.SaveCbbo(Call, October16, 6600.5);
-            this.cache.SaveDayFile(CacheFixture.Opra, "tcbbo", Call, October16, new TcbboRecordJson { Header = Header(RType.Tcbbo), Price = 12.5, Side = TradeAggressor.Buyer, TsReceivedUtc = received });
-            this.cache.SaveDayFile("GLBX.MDP3", "bbo-1m", "MNQZ6", October16, new BboRecordJson { Header = Header(RType.Bbo1M), Side = TradeAggressor.None, TsReceivedUtc = received, Levels = new[] { new Mbp1LevelJson { BidPrice = 21000.25 } } });
+            this.cache.SaveDayFile(CacheFixture.Opra, Schema.Tcbbo, Call, October16, new TcbboRecordJson { Header = Header(RType.Tcbbo), Price = 12.5, Side = TradeAggressor.Buyer, TsReceivedUtc = received });
+            this.cache.SaveDayFile(Datasets.GlbxMdp3, Schema.Bbo1Min, "MNQZ6", October16, new BboRecordJson { Header = Header(RType.Bbo1M), Side = TradeAggressor.None, TsReceivedUtc = received, Levels = new[] { new Mbp1LevelJson { BidPrice = 21000.25 } } });
             FakeArchiveDayCheck check = new FakeArchiveDayCheck
             {
-                Judges = (dataset, schema) => schema == "tcbbo" || dataset == "GLBX.MDP3",
+                Judges = (dataset, schema) => schema == Schema.Tcbbo || dataset == Datasets.GlbxMdp3,
                 Suspects = days => days.DayFileDays.Select(day => new ArchiveDaySuspect(day, "any", 0, null)),
             };
 
@@ -176,8 +176,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             CollectionAssert.AreEqual(
                 new[]
                 {
-                    Path.Combine("GLBX.MDP3", "bbo-1m", "2026", "10", "MNQZ6_2026-10-16.UTC.json.gz"),
-                    Path.Combine("OPRA.PILLAR", "tcbbo", "2026", "10", "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz"),
+                    Path.Combine(Datasets.GlbxMdp3, Schema.Bbo1Min, "2026", "10", "MNQZ6_2026-10-16.UTC.json.gz"),
+                    Path.Combine(Datasets.OpraPillar, Schema.Tcbbo, "2026", "10", "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz"),
                 },
                 report.Suspects.Select(suspect => suspect.RelativePath).ToArray());
         }

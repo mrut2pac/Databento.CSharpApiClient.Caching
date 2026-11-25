@@ -26,17 +26,17 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         /// </summary>
         private static readonly Dictionary<string, Func<CachedDatabentoClient, Task>[]> Calls = new Dictionary<string, Func<CachedDatabentoClient, Task>[]>
         {
-            ["cbbo-1s"] = Of(c => c.GetCbbo1sAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetCbbo1sAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetCbbo1s("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetCbbo1s("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["cbbo-1m"] = Of(c => c.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetCbbo1m("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetCbbo1m("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["bbo-1s"] = Of(c => c.GetBbo1sAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetBbo1sAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetBbo1s("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetBbo1s("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["bbo-1m"] = Of(c => c.GetBbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetBbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetBbo1m("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetBbo1m("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["tcbbo"] = Of(c => c.GetTcbboAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetTcbboAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetTcbbo("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetTcbbo("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["trades"] = Of(c => c.GetTradesAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetTradesAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetTrades("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetTrades("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["ohlcv-1s"] = Of(c => c.GetOhlcv1sAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1sAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetOhlcv1s("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1s("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["ohlcv-1m"] = Of(c => c.GetOhlcv1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetOhlcv1m("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1m("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["ohlcv-1h"] = Of(c => c.GetOhlcv1hAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1hAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetOhlcv1h("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1h("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["ohlcv-1d"] = Of(c => c.GetOhlcv1dAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1dAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetOhlcv1d("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetOhlcv1d("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
-            ["statistics"] = Of(c => c.GetStatisticsAsync("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetStatisticsAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd), c => c.GetStatistics("OPRA.PILLAR", Call, DayStart, DayEnd), c => c.GetStatistics("OPRA.PILLAR", Symbols, DayStart, DayEnd)),
+            [Schema.ConsolidatedBBO1Sec] = Of(c => c.GetCbbo1sAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetCbbo1sAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetCbbo1s(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetCbbo1s(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.ConsolidatedBBO1Min] = Of(c => c.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetCbbo1m(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetCbbo1m(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Bbo1Sec] = Of(c => c.GetBbo1sAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetBbo1sAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetBbo1s(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetBbo1s(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Bbo1Min] = Of(c => c.GetBbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetBbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetBbo1m(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetBbo1m(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Tcbbo] = Of(c => c.GetTcbboAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetTcbboAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetTcbbo(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetTcbbo(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Trades] = Of(c => c.GetTradesAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetTradesAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetTrades(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetTrades(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Ohlcv1Sec] = Of(c => c.GetOhlcv1sAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1sAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetOhlcv1s(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1s(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Ohlcv1Min] = Of(c => c.GetOhlcv1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetOhlcv1m(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1m(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Ohlcv1Hour] = Of(c => c.GetOhlcv1hAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1hAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetOhlcv1h(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1h(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Ohlcv1Day] = Of(c => c.GetOhlcv1dAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1dAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetOhlcv1d(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetOhlcv1d(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
+            [Schema.Statistics] = Of(c => c.GetStatisticsAsync(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetStatisticsAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd), c => c.GetStatistics(Datasets.OpraPillar, Call, DayStart, DayEnd), c => c.GetStatistics(Datasets.OpraPillar, Symbols, DayStart, DayEnd)),
         };
 
         [TestMethod]
@@ -74,9 +74,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day, Cbbo(Call, Day, 1));
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day.AddDays(1), 1), Cbbo(Put, Day, 1), Cbbo(Put, Day.AddDays(1), 1));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day.AddDays(1), 1), Cbbo(Put, Day, 1), Cbbo(Put, Day.AddDays(1), 1));
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayStart.AddDays(2));
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayStart.AddDays(2));
 
                 Assert.AreEqual(4, served.Length);
                 IReadOnlyList<FakeRequest> requests = fixture.Databento.TimeseriesRequests;
@@ -99,7 +99,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 string lines = JsonSerializer.Serialize(Cbbo(Call, Day, 1)) + "\n" + JsonSerializer.Serialize(Cbbo(Put, Day, 2)) + "\n";
                 fixture.Databento.Respond = request => request.Path == "timeseries.get_range" ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(lines) } : null;
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, other }, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, other }, DayStart, DayEnd);
 
                 CollectionAssert.AreEqual(new[] { Call }, served.Select(record => record.Symbol).ToArray());
                 Assert.IsNull(fixture.ReadCbboDayFile(Put, Day));

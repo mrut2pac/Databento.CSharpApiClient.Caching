@@ -31,7 +31,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Put, Day, Cbbo(Put, Day, 3));
                 RefuseEveryRequest(fixture);
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, Put }, DayStart, DayEnd, CacheMode.CacheOnly);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, Put }, DayStart, DayEnd, CacheMode.CacheOnly);
 
                 Assert.AreEqual(3, served.Length);
             }
@@ -46,7 +46,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day, Cbbo(Call, Day, 1));
                 RefuseEveryRequest(fixture);
 
-                NotCachedException ex = await Assert.ThrowsExceptionAsync<NotCachedException>(() => client.GetCbbo1mAsync("OPRA.PILLAR", new[] { Call, Put }, DayStart, DayStart.AddDays(2), CacheMode.CacheOnly));
+                NotCachedException ex = await Assert.ThrowsExceptionAsync<NotCachedException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, Put }, DayStart, DayStart.AddDays(2), CacheMode.CacheOnly));
 
                 Assert.AreEqual("OPRA.PILLAR", ex.Dataset);
                 Assert.AreEqual("cbbo-1m", ex.Schema);
@@ -54,7 +54,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 CollectionAssert.AreEqual(new[] { Day.AddDays(1) }, ex.MissingDays[Call].ToArray());
                 CollectionAssert.AreEqual(new[] { Day, Day.AddDays(1) }, ex.MissingDays[Put].ToArray());
                 StringAssert.Contains(ex.Message, Put + " 2026-10-16");
-                Assert.IsFalse(File.Exists(fixture.DayFilePath("cbbo-1m", Put, Day)), "nothing is saved");
+                Assert.IsFalse(File.Exists(fixture.DayFilePath(Schema.ConsolidatedBBO1Min, Put, Day)), "nothing is saved");
             }
         }
 
@@ -67,7 +67,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Cache.SaveDayFile<CbboRecordJson>(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day);
                 RefuseEveryRequest(fixture);
 
-                ICbboRecord[] served = await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.CacheOnly);
+                ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.CacheOnly);
 
                 Assert.AreEqual(0, served.Length);
             }
@@ -82,7 +82,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 RefuseEveryRequest(fixture);
                 ICachedDatabentoClient cached = client;
 
-                NotCachedException ex = Assert.ThrowsException<NotCachedException>(() => cached.GetCbbo1m("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.CacheOnly));
+                NotCachedException ex = Assert.ThrowsException<NotCachedException>(() => cached.GetCbbo1m(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.CacheOnly));
 
                 Assert.AreEqual(1, ex.MissingDayCount);
             }
@@ -91,7 +91,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         [TestMethod]
         public void NotCachedException_ManyDays_NamesTheFirstTenAndCountsTheRest()
         {
-            NotCachedException ex = new NotCachedException("OPRA.PILLAR", "cbbo-1m", Enumerable.Range(0, 12).Select(offset => new KeyValuePair<string, DateTime>(Call, Day.AddDays(offset))));
+            NotCachedException ex = new NotCachedException(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, Enumerable.Range(0, 12).Select(offset => new KeyValuePair<string, DateTime>(Call, Day.AddDays(offset))));
 
             Assert.AreEqual(12, ex.MissingDayCount);
             StringAssert.Contains(ex.Message, "and 2 more");
