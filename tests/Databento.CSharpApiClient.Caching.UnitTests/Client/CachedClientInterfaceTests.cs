@@ -50,9 +50,10 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             List<MethodInfo> offered = OfferedCachedCalls().Concat(otherCalls).ToList();
 
             List<string> missing = calls.Where(call => !offered.Any(member => member.Name == call.Name && OwnParameters(member).SequenceEqual(Parameters(call)))).Select(Signature).ToList();
-            List<string> extra = offered.Where(member => !calls.Any(call => call.Name == member.Name && OwnParameters(member).SequenceEqual(Parameters(call)))).Select(Signature).ToList();
+            List<string> extra = offered.Where(member => !calls.Any(call => call.Name == member.Name && OwnParameters(member).SequenceEqual(Parameters(call))) && !IsSyncFormOfAClassCall(member, calls))
+                .Select(Signature).ToList();
 
-            Assert.AreEqual(72, calls.Count, "44 time-series calls, the batch calls and 12 metadata and symbology calls, async and sync");
+            Assert.AreEqual(60, calls.Count, "44 time-series calls and the batch calls, async and sync, and 12 metadata and symbology calls, async");
             Assert.AreEqual(0, missing.Count, "Not offered: " + string.Join("; ", missing));
             Assert.AreEqual(0, extra.Count, "Not on the client: " + string.Join("; ", extra));
         }
@@ -240,6 +241,16 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         {
             return typeof(ICachedDatabentoClient).GetMethods().Where(TakesACacheMode)
                 .Concat(Extensions(typeof(CachedDatabentoClientExtensions)).Where(TakesACacheMode));
+        }
+
+        /// <summary>
+        /// Tells an extension that is the synchronous form of an async call on the class: a call added from 1.3.0 on has its sync form
+        /// only there
+        /// </summary>
+        private static bool IsSyncFormOfAClassCall(MethodInfo member, IEnumerable<MethodInfo> calls)
+        {
+            Type[] withToken = OwnParameters(member).Append(typeof(CancellationToken)).ToArray();
+            return member.IsStatic && calls.Any(call => call.Name == member.Name + "Async" && Parameters(call).SequenceEqual(withToken));
         }
 
         private static bool TakesACacheMode(MethodInfo call)

@@ -60,7 +60,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 }
             }
 
-            Assert.AreEqual(4 * Endpoints.Count, forms.Count, "the class's async and sync forms, the interface's and the extension's");
+            Assert.AreEqual(3 * Endpoints.Count, forms.Count, "the class's async form, the interface's and the extension's sync form");
             Assert.AreEqual(0, wrong.Count, string.Join(Environment.NewLine, wrong));
         }
 
@@ -149,8 +149,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         }
 
         /// <summary>
-        /// Every form of the metadata and symbology calls: the class's async and sync methods, the interface's async calls and the
-        /// extensions' sync forms
+        /// Every form of the metadata and symbology calls: the class's async methods, the interface's async calls and the extensions'
+        /// sync forms
         /// </summary>
         private static IEnumerable<MethodInfo> Forms()
         {
