@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Databento.CSharpApiClient.DataModel;
 using Databento.CSharpApiClient.DataModel.Metadata;
 using Databento.CSharpApiClient.DataModel.Symbology;
 
@@ -116,7 +117,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Cost = 0.125m;
 
-                double cost = ((ICachedDatabentoClient)client).GetCost("OPRA.PILLAR", new[] { Call }, "cbbo-1m", DayStart, DayEnd);
+                double cost = ((ICachedDatabentoClient)client).GetCost(Datasets.OpraPillar, new[] { Call }, Schema.ConsolidatedBBO1Min, DayStart, DayEnd);
 
                 Assert.AreEqual(0.125, cost, 1e-12);
             }
@@ -128,9 +129,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                DateRange first = await client.GetDatasetRangeAsync("OPRA.PILLAR");
+                DateRange first = await client.GetDatasetRangeAsync(Datasets.OpraPillar);
                 fixture.Databento.AvailableEndUtc = fixture.Databento.AvailableEndUtc.AddDays(1);
-                DateRange second = await client.GetDatasetRangeAsync("OPRA.PILLAR");
+                DateRange second = await client.GetDatasetRangeAsync(Datasets.OpraPillar);
 
                 Assert.AreEqual(TimeSpan.FromDays(1), second.End - first.End);
             }
@@ -172,8 +173,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     : type == typeof(IReadOnlyList<string>) ? new[] { Call }
                     : type == typeof(DateTimeOffset) && parameter.Name == "startUtc" ? DayStart
                     : type == typeof(DateTimeOffset) ? DayEnd
-                    : parameter.Name == "dataset" ? "OPRA.PILLAR"
-                    : parameter.Name == "schema" ? "cbbo-1m"
+                    : parameter.Name == "dataset" ? Datasets.OpraPillar
+                    : parameter.Name == "schema" ? Schema.ConsolidatedBBO1Min
                     : "2026-10-16");
             }
 
@@ -205,7 +206,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         {
             return new SymbologyRequest
             {
-                Dataset = "OPRA.PILLAR",
+                Dataset = Datasets.OpraPillar,
                 Symbols = new[] { Call },
                 StartDate = "2026-10-16",
                 EndDate = "2026-10-17",

@@ -218,9 +218,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                fixture.Databento.Add("cbbo-1s", OneSecond(Call, 1));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Sec, OneSecond(Call, 1));
 
-                ICbboRecord[] served = await client.GetCbbo1sAsync("OPRA.PILLAR", new[] { Call }, DayStart, DayEnd);
+                ICbboRecord[] served = await client.GetCbbo1sAsync(Datasets.OpraPillar, new[] { Call }, DayStart, DayEnd);
 
                 Assert.IsNull(client.DbnClient, "a client that downloads JSON never needs one");
                 Assert.AreEqual(1, served.Length);
