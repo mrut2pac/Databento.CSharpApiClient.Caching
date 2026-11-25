@@ -445,7 +445,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         public async Task Open_FileOfAnotherSchema_IsRefused()
         {
             OhlcvRecordDbn[] bars = new[] { ArchiveTestRecords.CreateFullyPopulated<OhlcvRecordDbn>(1) };
-            ArchiveFileIdentity identity = new ArchiveFileIdentity("XNAS.ITCH", "ohlcv-1m", "QQQ", 2026, 10, "UTC", ArchiveTestRecords.BuiltUtc);
+            ArchiveFileIdentity identity = new ArchiveFileIdentity(Datasets.XnasItch, DataModel.Schema.Ohlcv1Min, "QQQ", 2026, 10, "UTC", ArchiveTestRecords.BuiltUtc);
 
             using(MemoryStream stream = new MemoryStream())
             {

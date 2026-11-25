@@ -216,7 +216,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Cache
         [TestMethod]
         public async Task Write_FolderMissing_IsCreatedAndNoTemporaryFileIsLeft()
         {
-            string path = Path.Combine(this.directory, "OPRA.PILLAR", "cbbo-1m", "2026", "10", "day.json.gz");
+            string path = Path.Combine(this.directory, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "day.json.gz");
 
             Assert.IsTrue(await DayFile.WriteAsync(path, new[] { Cbbo(4.05) }, overwrite: true, CancellationToken.None));
 

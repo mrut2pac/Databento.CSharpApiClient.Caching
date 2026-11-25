@@ -1,4 +1,5 @@
 using Databento.CSharpApiClient.Caching.Compaction;
+using Databento.CSharpApiClient.DataModel;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -8,18 +9,18 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Compaction
     public class ArchiveSchemaHandlersTests
     {
         [TestMethod]
-        [DataRow("cbbo-1s")]
-        [DataRow("cbbo-1m")]
-        [DataRow("bbo-1s")]
-        [DataRow("bbo-1m")]
-        [DataRow("tcbbo")]
-        [DataRow("trades")]
-        [DataRow("ohlcv-1s")]
-        [DataRow("ohlcv-1m")]
-        [DataRow("ohlcv-1h")]
-        [DataRow("ohlcv-1d")]
-        [DataRow("ohlcv-eod")]
-        [DataRow("statistics")]
+        [DataRow(Schema.ConsolidatedBBO1Sec)]
+        [DataRow(Schema.ConsolidatedBBO1Min)]
+        [DataRow(Schema.Bbo1Sec)]
+        [DataRow(Schema.Bbo1Min)]
+        [DataRow(Schema.Tcbbo)]
+        [DataRow(Schema.Trades)]
+        [DataRow(Schema.Ohlcv1Sec)]
+        [DataRow(Schema.Ohlcv1Min)]
+        [DataRow(Schema.Ohlcv1Hour)]
+        [DataRow(Schema.Ohlcv1Day)]
+        [DataRow(Schema.OhlcvEod)]
+        [DataRow(Schema.Statistics)]
         public void TryGet_ArchivedSchema_IsHandledUnderItsDatabentoName(string schema)
         {
             Assert.IsTrue(ArchiveSchemaHandlers.TryGet(schema, out IArchiveSchemaHandler handler));
@@ -28,9 +29,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Compaction
         }
 
         [TestMethod]
-        [DataRow("mbo")]
-        [DataRow("mbp-1")]
-        [DataRow("definition")]
+        [DataRow(Schema.Mbo)]
+        [DataRow(Schema.Mbp1)]
+        [DataRow(Schema.Definition)]
         [DataRow("CBBO-1M")]
         [DataRow("CBBO1-Min")]
         [DataRow("")]

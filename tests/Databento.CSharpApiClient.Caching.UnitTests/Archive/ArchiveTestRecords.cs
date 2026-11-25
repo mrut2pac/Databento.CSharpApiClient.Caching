@@ -24,7 +24,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
     {
         public static readonly DateTime BuiltUtc = new DateTime(2026, 11, 18, 2, 15, 0, DateTimeKind.Utc);
 
-        public static readonly ArchiveFileIdentity Identity = new ArchiveFileIdentity("OPRA.PILLAR", "cbbo-1m", "SPXW.OPT", 2026, 10, "UTC", BuiltUtc);
+        public static readonly ArchiveFileIdentity Identity = new ArchiveFileIdentity(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW.OPT", 2026, 10, "UTC", BuiltUtc);
 
         private static readonly DateTime BaseTimeUtc = new DateTime(2026, 10, 16, 13, 30, 0, DateTimeKind.Utc);
 
@@ -132,12 +132,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         {
             return schema switch
             {
-                BboArchiveSchema => new SchemaTarget("GLBX.MDP3", "bbo-1s", "MNQZ6", "MNQ.FUT"),
-                OhlcvArchiveSchema => new SchemaTarget("XNAS.ITCH", "ohlcv-1m", "QQQ", "QQQ"),
-                TradeArchiveSchema => new SchemaTarget("DBIX.CORE", "trades", "SPX", "SPX"),
-                TcbboArchiveSchema => new SchemaTarget("OPRA.PILLAR", "tcbbo", "SPXW  261016C06600000", "SPXW.OPT"),
-                StatisticsArchiveSchema => new SchemaTarget("OPRA.PILLAR", "statistics", "SPXW  261016C06600000", "SPXW.OPT"),
-                _ => new SchemaTarget("OPRA.PILLAR", "cbbo-1m", "SPXW  261016C06600000", "SPXW.OPT"),
+                BboArchiveSchema => new SchemaTarget(Datasets.GlbxMdp3, Schema.Bbo1Sec, "MNQZ6", "MNQ.FUT"),
+                OhlcvArchiveSchema => new SchemaTarget(Datasets.XnasItch, Schema.Ohlcv1Min, "QQQ", "QQQ"),
+                TradeArchiveSchema => new SchemaTarget(Datasets.DbixCore, Schema.Trades, "SPX", "SPX"),
+                TcbboArchiveSchema => new SchemaTarget(Datasets.OpraPillar, Schema.Tcbbo, "SPXW  261016C06600000", "SPXW.OPT"),
+                StatisticsArchiveSchema => new SchemaTarget(Datasets.OpraPillar, Schema.Statistics, "SPXW  261016C06600000", "SPXW.OPT"),
+                _ => new SchemaTarget(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "SPXW  261016C06600000", "SPXW.OPT"),
             };
         }
 

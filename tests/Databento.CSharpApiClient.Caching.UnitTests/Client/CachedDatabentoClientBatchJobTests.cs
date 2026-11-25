@@ -6,6 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
+using Databento.CSharpApiClient.DataModel;
+
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using static Databento.CSharpApiClient.Caching.UnitTests.Client.CachedClientFixture;
@@ -31,7 +33,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart.AddHours(14), RangeEnd.AddHours(-3), 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart.AddHours(14), RangeEnd.AddHours(-3), 1m);
 
                 FakeBatchJob job = fixture.Databento.Jobs.Single();
                 CollectionAssert.AreEqual(new[] { Call, Put }, job.Symbols);
@@ -57,7 +59,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient(options => options.BatchPollInterval = TimeSpan.FromSeconds(7)))
             {
-                await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 CollectionAssert.AreEqual(new[] { TimeSpan.FromSeconds(7), TimeSpan.FromSeconds(7) }, fixture.Clock.Waits.ToArray());
             }
@@ -72,7 +74,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, First, Cbbo(Call, First, 1));
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, Day, Cbbo(Call, Day, 1));
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 CollectionAssert.AreEqual(new[] { Put }, fixture.Databento.Jobs.Single().Symbols);
                 Assert.AreEqual(1, fixture.ReadCbboDayFile(Call, First).Length);
@@ -95,7 +97,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     }
                 }
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 Assert.AreEqual(0, fixture.Databento.Jobs.Count);
                 Assert.AreEqual(0, fixture.Databento.RequestsTo("metadata.get_cost").Count);
@@ -112,7 +114,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Cost = 7.40m;
 
-                BatchJobTooExpensiveException thrown = await Assert.ThrowsExceptionAsync<BatchJobTooExpensiveException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 5m));
+                BatchJobTooExpensiveException thrown = await Assert.ThrowsExceptionAsync<BatchJobTooExpensiveException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 5m));
 
                 Assert.AreEqual(7.40m, thrown.EstimatedCostUsd);
                 Assert.AreEqual(5m, thrown.MaxCostUsd);
@@ -128,7 +130,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Jobs.Add(EarlierJob("EARLIER-1", fixture.Clock.GetUtcNow().UtcDateTime.AddDays(20)));
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Put, Call }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Put, Call }, RangeStart, RangeEnd, 1m);
 
                 Assert.AreEqual(1, fixture.Databento.Jobs.Count);
                 Assert.AreEqual(0, fixture.Databento.RequestsTo("metadata.get_cost").Count);
@@ -147,7 +149,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Jobs.Add(EarlierJob("EARLIER-1", fixture.Clock.GetUtcNow().UtcDateTime.AddMinutes(30)));
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 Assert.AreEqual(2, fixture.Databento.Jobs.Count);
                 Assert.AreEqual(0, report.ReusedJobIds.Count);
@@ -172,7 +174,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 csv.Fields["encoding"] = "csv";
                 fixture.Databento.Jobs.AddRange(new[] { otherSchema, shorter, fewerSymbols, csv });
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 Assert.AreEqual(0, report.ReusedJobIds.Count);
                 Assert.AreEqual(1, report.JobIds.Count);
@@ -193,7 +195,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 wider.Fields["split_symbols"] = "true";
                 fixture.Databento.Jobs.Add(wider);
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 CollectionAssert.AreEqual(new[] { "EARLIER-WIDER" }, report.ReusedJobIds.ToArray());
                 Assert.AreEqual(1, fixture.Databento.Jobs.Count);
@@ -209,7 +211,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Call, First, Cbbo(Call, First, 1));
                 fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Put, First, Cbbo(Put, First, 1));
 
-                await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart.AddDays(-1), RangeEnd, 1m);
+                await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart.AddDays(-1), RangeEnd, 1m);
 
                 CollectionAssert.AreEqual(new[] { RangeStart.AddDays(-1), RangeStart.AddDays(1) }, fixture.Databento.Jobs.Select(job => ParseTime(job.Fields["start"])).ToArray());
                 CollectionAssert.AreEqual(new[] { RangeStart, RangeEnd }, fixture.Databento.Jobs.Select(job => ParseTime(job.Fields["end"])).ToArray());
@@ -222,7 +224,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient(options => options.MaxSymbolsPerRequest = 1))
             {
-                await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Put, Call }, RangeStart, RangeEnd, 1m);
+                await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Put, Call }, RangeStart, RangeEnd, 1m);
 
                 CollectionAssert.AreEqual(new[] { Call, Put }, fixture.Databento.Jobs.SelectMany(job => job.Symbols).ToArray());
             }
@@ -237,7 +239,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 string archive = fixture.Cache.WriteCbboFile(new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), 0, new Caching.Archive.ArchiveSymbolDay<DataModel.ICbboRecord>(Call, First, new DataModel.ICbboRecord[] { Cbbo(Call, First, 1) }));
                 File.WriteAllBytes(archive, new byte[] { 1, 2, 3 });
 
-                await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m));
 
                 Assert.AreEqual(0, fixture.Databento.Jobs.Count);
             }
@@ -252,7 +254,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Databento.WrongHashes.Add("opra-pillar-20261016.cbbo-1m.dbn.zst");
                 fixture.Databento.WrongHashJob = "TEST-1";
 
-                await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m));
 
                 Assert.AreEqual(2, fixture.Databento.Jobs.Count);
                 Assert.AreEqual(331, fixture.ReadCbboDayFile(Put, Day).Length);
@@ -267,7 +269,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 string downloads = Path.Combine(fixture.Cache.Folder, "Downloads");
                 using(CachedDatabentoClient client = fixture.CreateClient(options => options.BatchDownloadFolder = downloads))
                 {
-                    BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                    BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                     Assert.AreEqual(4, report.SymbolDaysSaved);
                     Assert.IsTrue(Directory.Exists(downloads));
@@ -284,7 +286,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.Conditions[Day] = "pending";
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 Assert.AreEqual(DayStart, ParseTime(fixture.Databento.Jobs.Single().Fields["end"]));
                 CollectionAssert.AreEqual(new[] { Day }, report.DaysLeftOut.ToArray());
@@ -299,7 +301,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.AvailableEndUtc = First;
 
-                BatchReport report = await client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = await client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 Assert.AreEqual(0, fixture.Databento.Jobs.Count);
                 CollectionAssert.AreEqual(new[] { First, Day }, report.DaysLeftOut.ToArray());
@@ -314,7 +316,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.JobStates = new[] { "queued", "expired" };
 
-                await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m));
 
                 Assert.IsNull(fixture.ReadCbboDayFile(Call, First));
             }
@@ -328,7 +330,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 fixture.Databento.WrongHashes.Add("opra-pillar-20261016.cbbo-1m.dbn.zst");
 
-                await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m));
 
                 Assert.IsNull(fixture.ReadCbboDayFile(Call, First));
             }
@@ -340,7 +342,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                BatchReport report = client.RunBatchJob("OPRA.PILLAR", "cbbo-1m", new[] { Call, Put }, RangeStart, RangeEnd, 1m);
+                BatchReport report = client.RunBatchJob(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call, Put }, RangeStart, RangeEnd, 1m);
 
                 Assert.AreEqual(4, report.SymbolDaysSaved);
             }
@@ -352,11 +354,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "mbo", new[] { Call }, RangeStart, RangeEnd, 1m));
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { "ALL_SYMBOLS" }, RangeStart, RangeEnd, 1m));
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new string[0], RangeStart, RangeEnd, 1m));
-                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call }, RangeEnd, RangeEnd, 1m));
-                await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() => client.RunBatchJobAsync("OPRA.PILLAR", "cbbo-1m", new[] { Call }, RangeStart, RangeEnd, 0m));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.Mbo, new[] { Call }, RangeStart, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { "ALL_SYMBOLS" }, RangeStart, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new string[0], RangeStart, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<ArgumentException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call }, RangeEnd, RangeEnd, 1m));
+                await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() => client.RunBatchJobAsync(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, new[] { Call }, RangeStart, RangeEnd, 0m));
                 Assert.ThrowsException<ArgumentException>(() => fixture.CreateClient(options => options.BatchPollInterval = TimeSpan.Zero));
 
                 Assert.AreEqual(0, fixture.Databento.RequestsTo("metadata.get_dataset_range").Count + fixture.Databento.Jobs.Count);
@@ -371,8 +373,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 ExpiresUtc = expiresUtc,
                 Fields = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    ["dataset"] = "OPRA.PILLAR",
-                    ["schema"] = "cbbo-1m",
+                    ["dataset"] = Datasets.OpraPillar,
+                    ["schema"] = Schema.ConsolidatedBBO1Min,
                     ["symbols"] = Call + "," + Put,
                     ["start"] = "2026-10-15T00:00:00Z",
                     ["end"] = "2026-10-17T00:00:00Z",

@@ -132,7 +132,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 BatchReport report = await client.IngestBatchFolderAsync(Sample("E_dbn_zstd_day_glbx"));
 
                 Assert.AreEqual(2, report.SymbolDaysSaved);
-                string path = fixture.DayFilePath("bbo-1m", "MNQZ6", First, "GLBX.MDP3");
+                string path = fixture.DayFilePath(Schema.Bbo1Min, "MNQZ6", First, Datasets.GlbxMdp3);
                 BboRecordJson[] records = await DayFile.ReadAsync(path, JsonRecordReader.ReadBboAsync, CancellationToken.None);
                 Assert.AreEqual(1390, records.Length);
                 Assert.IsTrue(records.All(record => ((IBboRecord)record).TsReceivedUtc.Value.Date == First));
@@ -148,7 +148,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 BatchReport report = await client.IngestBatchFolderAsync(Sample("F_dbn_zstd_day_statistics"));
 
                 Assert.AreEqual(4, report.SymbolDaysSaved);
-                StatisticsRecordJson[] records = await DayFile.ReadAsync(fixture.DayFilePath("statistics", Put, Second), JsonRecordReader.ReadStatisticsAsync, CancellationToken.None);
+                StatisticsRecordJson[] records = await DayFile.ReadAsync(fixture.DayFilePath(Schema.Statistics, Put, Second), JsonRecordReader.ReadStatisticsAsync, CancellationToken.None);
                 Assert.AreEqual(9, records.Length);
             }
         }
@@ -325,7 +325,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 Rewrite(Path.Combine(parent, "metadata.json"), "\"stype_in\": \"raw_symbol\"", "\"stype_in\": \"parent\"");
                 await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.IngestBatchFolderAsync(parent));
 
-                string mbo = CopySample(fixture, "A_dbn_zstd_day", "mbo");
+                string mbo = CopySample(fixture, "A_dbn_zstd_day", Schema.Mbo);
                 Rewrite(Path.Combine(mbo, "metadata.json"), "\"schema\": \"cbbo-1m\"", "\"schema\": \"mbo\"");
                 await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.IngestBatchFolderAsync(mbo));
 
@@ -401,7 +401,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
         private static TcbboRecordJson[] ReadTcbbo(CachedClientFixture fixture, string symbol, DateTime day)
         {
-            string path = fixture.DayFilePath("tcbbo", symbol, day);
+            string path = fixture.DayFilePath(Schema.Tcbbo, symbol, day);
             return File.Exists(path) ? DayFile.ReadAsync(path, JsonRecordReader.ReadTcbboAsync, CancellationToken.None).GetAwaiter().GetResult() : null;
         }
 

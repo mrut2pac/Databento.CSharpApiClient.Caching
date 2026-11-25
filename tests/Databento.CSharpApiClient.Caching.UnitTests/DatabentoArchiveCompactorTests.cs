@@ -45,7 +45,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
 
         private static readonly DateTime NowUtc = new DateTime(2026, 11, 19, 2, 15, 30, DateTimeKind.Utc);
 
-        private static readonly string GroupName = Path.Combine("OPRA.PILLAR", "cbbo-1m", "2026", "10") + " SPXW.OPT";
+        private static readonly string GroupName = Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10") + " SPXW.OPT";
 
         private CacheFixture cache;
 
@@ -260,7 +260,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 report = await this.CompactAsync();
             }
 
-            CollectionAssert.AreEqual(new[] { Path.Combine("OPRA.PILLAR", "cbbo-1m", "2026", "10", "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz") }, report.FilesLeft.ToArray(), "under the cache root");
+            CollectionAssert.AreEqual(new[] { Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz") }, report.FilesLeft.ToArray(), "under the cache root");
             Assert.AreEqual(0L, report.DayFilesDeleted);
             Assert.IsTrue(File.Exists(dayFile));
 
@@ -286,7 +286,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             Assert.AreEqual(1, report.GroupsCompacted);
             Assert.AreEqual(1L, report.SymbolDaysWritten);
             UnreadableDayFile dayFile = report.UnreadableDayFiles.Single();
-            Assert.AreEqual(Path.Combine("OPRA.PILLAR", "cbbo-1m", "2026", "10", "SPXW%20%20261016P06600000_2026-10-16.UTC.json.gz"), dayFile.RelativePath);
+            Assert.AreEqual(Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016P06600000_2026-10-16.UTC.json.gz"), dayFile.RelativePath);
             Assert.IsFalse(string.IsNullOrEmpty(dayFile.Error));
             Assert.AreEqual(0, report.Suspects.Count, "an unreadable day file is no suspect");
             Assert.AreEqual(0, report.FailedGroups.Count);
@@ -306,7 +306,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
 
             ArchiveCompactionReport report = await this.CompactAsync();
 
-            Assert.AreEqual(Path.Combine("OPRA.PILLAR", "cbbo-1m", "2026", "10", "SPXW%20%20261016P06600000_2026-10-16.UTC.json.gz"), report.UnreadableDayFiles.Single().RelativePath);
+            Assert.AreEqual(Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016P06600000_2026-10-16.UTC.json.gz"), report.UnreadableDayFiles.Single().RelativePath);
             Assert.AreEqual(1L, report.SymbolDaysWritten);
             Assert.AreEqual(1L, report.DayFilesDeleted);
             Assert.IsTrue(File.Exists(dayFile));
@@ -396,7 +396,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 CollectionAssert.AreEqual(beforeBytes[i], File.ReadAllBytes(before[i]));
             }
 
-            string dryRunDirectory = Path.Combine(this.cache.DryRunFolder, "OPRA.PILLAR", "cbbo-1m", "2026", "10");
+            string dryRunDirectory = Path.Combine(this.cache.DryRunFolder, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10");
             CollectionAssert.AreEqual(new[] { PreviousDelta(1) }, this.cache.ArchiveFileNames(dryRunDirectory));
             CollectionAssert.AreEquivalent(new[] { "Cache", "DryRun" }, Directory.GetDirectories(this.cache.Folder).Select(Path.GetFileName).ToArray(), "no other folder is made");
             await using(ArchiveFileReader<ICbboRecord, CbboRecordDbn> reader = await ArchiveFile.OpenAsync(Path.Combine(dryRunDirectory, PreviousDelta(1)), new CbboArchiveSchema(RType.Cbbo1M)))
@@ -430,16 +430,16 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 Side = TradeAggressor.None,
                 TsReceivedUtc = new DateTime(2026, 10, 16, 13, 30, 1, DateTimeKind.Utc),
             };
-            this.cache.SaveDayFile("GLBX.MDP3", "bbo-1m", "MNQZ6", October16, bbo);
-            this.cache.SaveDayFile("DBIX.CORE", "trades", "SPX", October16, trade);
+            this.cache.SaveDayFile(Datasets.GlbxMdp3, Schema.Bbo1Min, "MNQZ6", October16, bbo);
+            this.cache.SaveDayFile(Datasets.DbixCore, Schema.Trades, "SPX", October16, trade);
 
             ArchiveCompactionReport report = await this.CompactAsync();
 
             Assert.AreEqual(2, report.GroupsCompacted);
-            CollectionAssert.AreEqual(new[] { "GLBX.MDP3_bbo-1m_MNQ.FUT_2026-10.UTC_20261119T021530.full.parquet" }, this.cache.ArchiveFileNames(this.cache.MonthDirectory("GLBX.MDP3", "bbo-1m", 2026, 10)));
-            CollectionAssert.AreEqual(new[] { "DBIX.CORE_trades_SPX_2026-10.UTC_20261119T021530.full.parquet" }, this.cache.ArchiveFileNames(this.cache.MonthDirectory("DBIX.CORE", "trades", 2026, 10)));
-            Assert.AreEqual(21000.25, (await this.cache.ReadServedAsync(new BboArchiveSchema(RType.Bbo1M), "GLBX.MDP3", "bbo-1m", "MNQZ6", October16)).Single().Level.BidPrice);
-            Assert.AreEqual(6600.5, (await this.cache.ReadServedAsync(new TradeArchiveSchema(RType.Mbp0), "DBIX.CORE", "trades", "SPX", October16)).Single().Price);
+            CollectionAssert.AreEqual(new[] { "GLBX.MDP3_bbo-1m_MNQ.FUT_2026-10.UTC_20261119T021530.full.parquet" }, this.cache.ArchiveFileNames(this.cache.MonthDirectory(Datasets.GlbxMdp3, Schema.Bbo1Min, 2026, 10)));
+            CollectionAssert.AreEqual(new[] { "DBIX.CORE_trades_SPX_2026-10.UTC_20261119T021530.full.parquet" }, this.cache.ArchiveFileNames(this.cache.MonthDirectory(Datasets.DbixCore, Schema.Trades, 2026, 10)));
+            Assert.AreEqual(21000.25, (await this.cache.ReadServedAsync(new BboArchiveSchema(RType.Bbo1M), Datasets.GlbxMdp3, Schema.Bbo1Min, "MNQZ6", October16)).Single().Level.BidPrice);
+            Assert.AreEqual(6600.5, (await this.cache.ReadServedAsync(new TradeArchiveSchema(RType.Mbp0), Datasets.DbixCore, Schema.Trades, "SPX", October16)).Single().Price);
         }
 
         [TestMethod]
@@ -447,18 +447,18 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         {
             DateTime received = new DateTime(2026, 10, 16, 13, 30, 0, DateTimeKind.Utc);
             this.cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, SpyCall, October16, CacheFixture.CbboRecord(October16, 1.25, 0));
-            this.cache.SaveDayFile(CacheFixture.Opra, "tcbbo", Call, October16, new TcbboRecordJson { Header = Header(RType.Tcbbo), Price = 12.5, Side = TradeAggressor.Buyer, TsReceivedUtc = received });
-            this.cache.SaveDayFile(CacheFixture.Opra, "statistics", Call, October16, new StatisticsRecordJson { Header = Header(RType.Statistics), Price = double.NaN, Quantity = 321, TsReceivedUtc = received });
-            this.cache.SaveDayFile("XNAS.ITCH", "ohlcv-1d", "QQQ", October16, new OhlcvRecordJson { Header = Header(RType.Ohlcv1D), Close = 600.5 });
+            this.cache.SaveDayFile(CacheFixture.Opra, Schema.Tcbbo, Call, October16, new TcbboRecordJson { Header = Header(RType.Tcbbo), Price = 12.5, Side = TradeAggressor.Buyer, TsReceivedUtc = received });
+            this.cache.SaveDayFile(CacheFixture.Opra, Schema.Statistics, Call, October16, new StatisticsRecordJson { Header = Header(RType.Statistics), Price = double.NaN, Quantity = 321, TsReceivedUtc = received });
+            this.cache.SaveDayFile(Datasets.XnasItch, Schema.Ohlcv1Day, "QQQ", October16, new OhlcvRecordJson { Header = Header(RType.Ohlcv1D), Close = 600.5 });
 
             ArchiveCompactionReport report = await this.CompactAsync();
 
             Assert.AreEqual(4, report.GroupsCompacted);
             Assert.AreEqual(4L, report.DayFilesDeleted);
             Assert.AreEqual(1.25, (await this.cache.ReadServedCbboAsync(SpyCall, October16)).Single().Price);
-            Assert.AreEqual(12.5, (await this.cache.ReadServedAsync(new TcbboArchiveSchema(RType.Tcbbo), CacheFixture.Opra, "tcbbo", Call, October16)).Single().Price);
-            Assert.AreEqual(321L, (await this.cache.ReadServedAsync(new StatisticsArchiveSchema(RType.Statistics), CacheFixture.Opra, "statistics", Call, October16)).Single().Quantity);
-            Assert.AreEqual(600.5, (await this.cache.ReadServedAsync(new OhlcvArchiveSchema(RType.Ohlcv1D), "XNAS.ITCH", "ohlcv-1d", "QQQ", October16)).Single().Close);
+            Assert.AreEqual(12.5, (await this.cache.ReadServedAsync(new TcbboArchiveSchema(RType.Tcbbo), CacheFixture.Opra, Schema.Tcbbo, Call, October16)).Single().Price);
+            Assert.AreEqual(321L, (await this.cache.ReadServedAsync(new StatisticsArchiveSchema(RType.Statistics), CacheFixture.Opra, Schema.Statistics, Call, October16)).Single().Quantity);
+            Assert.AreEqual(600.5, (await this.cache.ReadServedAsync(new OhlcvArchiveSchema(RType.Ohlcv1D), Datasets.XnasItch, Schema.Ohlcv1Day, "QQQ", October16)).Single().Close);
         }
 
         [TestMethod]
@@ -468,19 +468,19 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             string[] left =
             {
                 this.cache.SaveDayFile("not_a_dataset", CacheFixture.Cbbo, Call, October16, CacheFixture.CbboRecord(October16, 1, 0)),
-                this.cache.SaveDayFile(CacheFixture.Opra, "mbo", Call, October16, CacheFixture.CbboRecord(October16, 1, 0)),
+                this.cache.SaveDayFile(CacheFixture.Opra, Schema.Mbo, Call, October16, CacheFixture.CbboRecord(October16, 1, 0)),
                 CopyTo(dayFile, this.cache.CbboDirectory, "SPXW%20%20261016C06600000_2026-10-16.ET.json.gz"),
                 CopyTo(dayFile, this.cache.CbboDirectory, "SPXW%20%20261016C06600000_2026-11-02.UTC.json.gz"),
                 CopyTo(dayFile, this.cache.CbboDirectory, "notes.txt"),
-                CopyTo(dayFile, Path.Combine(this.cache.Root, "OPRA.PILLAR", "cbbo-1m", "26", "10"), Path.GetFileName(dayFile)),
-                CopyTo(dayFile, Path.Combine(this.cache.Root, "OPRA.PILLAR", "cbbo-1m", "2026", "13"), Path.GetFileName(dayFile)),
+                CopyTo(dayFile, Path.Combine(this.cache.Root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "26", "10"), Path.GetFileName(dayFile)),
+                CopyTo(dayFile, Path.Combine(this.cache.Root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "13"), Path.GetFileName(dayFile)),
             };
 
             ArchiveCompactionReport report = await this.CompactAsync();
 
             Assert.AreEqual(1, report.GroupsCompacted);
             Assert.AreEqual(1L, report.DayFilesAbsorbed);
-            CollectionAssert.AreEqual(new[] { Path.Combine("OPRA.PILLAR", "mbo"), "not_a_dataset" }, report.FoldersSkipped.ToArray(), "a folder of no dataset, and one of a schema the archive has no columns for");
+            CollectionAssert.AreEqual(new[] { Path.Combine(Datasets.OpraPillar, Schema.Mbo), "not_a_dataset" }, report.FoldersSkipped.ToArray(), "a folder of no dataset, and one of a schema the archive has no columns for");
             Assert.IsFalse(File.Exists(dayFile));
             foreach(string path in left)
             {
@@ -511,11 +511,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             if(archived)
             {
                 // every column before ts_in_delta the same as the day file's, so comparing the two reaches it
-                ArchiveTestRecords.WriteFile(schema, this.cache.MonthDirectory(CacheFixture.Opra, "tcbbo", 2026, 10), new ArchiveFileIdentity(CacheFixture.Opra, "tcbbo", "SPXW.OPT", 2026, 10, "UTC", PreviousBuiltUtc), new ArchiveSymbolDay<ITcbboRecord>(Call, October16, new ITcbboRecord[] { Tcbbo(12.5, 5150) }));
+                ArchiveTestRecords.WriteFile(schema, this.cache.MonthDirectory(CacheFixture.Opra, Schema.Tcbbo, 2026, 10), new ArchiveFileIdentity(CacheFixture.Opra, Schema.Tcbbo, "SPXW.OPT", 2026, 10, "UTC", PreviousBuiltUtc), new ArchiveSymbolDay<ITcbboRecord>(Call, October16, new ITcbboRecord[] { Tcbbo(12.5, 5150) }));
             }
 
-            string overflowing = this.cache.SaveDayFile(CacheFixture.Opra, "tcbbo", Call, October16, Tcbbo(12.5, (long)int.MaxValue + 1));
-            this.cache.SaveDayFile(CacheFixture.Opra, "tcbbo", Put, October16, Tcbbo(1.5, 950));
+            string overflowing = this.cache.SaveDayFile(CacheFixture.Opra, Schema.Tcbbo, Call, October16, Tcbbo(12.5, (long)int.MaxValue + 1));
+            this.cache.SaveDayFile(CacheFixture.Opra, Schema.Tcbbo, Put, October16, Tcbbo(1.5, 950));
 
             ArchiveCompactionReport report = await this.CompactAsync();
 
@@ -524,8 +524,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             Assert.AreEqual(1L, report.DayFilesDeleted);
             StringAssert.Contains(report.UnreadableDayFiles.Single().Error, "ts_in_delta");
             Assert.IsTrue(File.Exists(overflowing));
-            Assert.AreEqual(950, (await this.cache.ReadServedAsync(schema, CacheFixture.Opra, "tcbbo", Put, October16)).Single().TsInDelta);
-            TcbboRecordDbn[] call = await this.cache.ReadServedAsync(schema, CacheFixture.Opra, "tcbbo", Call, October16);
+            Assert.AreEqual(950, (await this.cache.ReadServedAsync(schema, CacheFixture.Opra, Schema.Tcbbo, Put, October16)).Single().TsInDelta);
+            TcbboRecordDbn[] call = await this.cache.ReadServedAsync(schema, CacheFixture.Opra, Schema.Tcbbo, Call, October16);
             if(archived)
             {
                 Assert.AreEqual(5150, call.Single().TsInDelta, "the full file's copy is still served");
@@ -1127,7 +1127,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
 
             Assert.AreEqual(1, report.FullFilesWritten);
             CollectionAssert.AreEqual(before, this.cache.CacheFiles());
-            CollectionAssert.AreEqual(new[] { NewFullFile }, this.cache.ArchiveFileNames(Path.Combine(this.cache.DryRunFolder, "OPRA.PILLAR", "cbbo-1m", "2026", "10")));
+            CollectionAssert.AreEqual(new[] { NewFullFile }, this.cache.ArchiveFileNames(Path.Combine(this.cache.DryRunFolder, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10")));
         }
 
         [TestMethod]
@@ -1307,7 +1307,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
 
             Assert.AreEqual(1, report.DeltasWritten);
             Assert.IsTrue(File.Exists(orphan));
-            CollectionAssert.AreEqual(new[] { Path.Combine("OPRA.PILLAR", "cbbo-1m", "2026", "10", "OPRA.PILLAR_cbbo-1m_SPXW.OPT_2026-10.UTC_20261119T021500.delta.1.parquet") }, report.OrphanFiles.ToArray(), "under the cache root");
+            CollectionAssert.AreEqual(new[] { Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "OPRA.PILLAR_cbbo-1m_SPXW.OPT_2026-10.UTC_20261119T021500.delta.1.parquet") }, report.OrphanFiles.ToArray(), "under the cache root");
             Assert.AreEqual(0, report.FilesLeft.Count, "no delete of it was tried");
             CollectionAssert.AreEqual(new[] { PreviousDelta(1), PreviousFullFile, Path.GetFileName(orphan) }, this.cache.CbboArchiveFileNames());
         }

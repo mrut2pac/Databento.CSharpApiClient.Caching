@@ -473,7 +473,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         [TestMethod]
         public async Task Restore_LeftRestoreFolder_IsDeletedAndOtherFoldersKept()
         {
-            string left = Path.Combine(this.StagingFolder, "20261118T021530.restore", "OPRA.PILLAR");
+            string left = Path.Combine(this.StagingFolder, "20261118T021530.restore", Datasets.OpraPillar);
             Directory.CreateDirectory(left);
             File.WriteAllBytes(Path.Combine(left, "half.json.gz"), new byte[] { 1 });
             string other = Path.Combine(this.StagingFolder, "Notes");
@@ -565,7 +565,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         {
             Directory.CreateDirectory(this.DryRunRestoreFolder);
             File.WriteAllBytes(Path.Combine(this.DryRunRestoreFolder, "stale.json.gz"), new byte[] { 1 });
-            string compactionOutput = Path.Combine(this.cache.DryRunFolder, "OPRA.PILLAR");
+            string compactionOutput = Path.Combine(this.cache.DryRunFolder, Datasets.OpraPillar);
             Directory.CreateDirectory(compactionOutput);
             this.PutBackup(BackupTarTestFiles.CreateTar(BackupFiles));
 

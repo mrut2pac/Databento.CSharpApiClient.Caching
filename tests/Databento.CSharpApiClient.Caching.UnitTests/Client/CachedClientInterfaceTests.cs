@@ -142,12 +142,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1), Cbbo(Put, Day, 2));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1), Cbbo(Put, Day, 2));
                 IDatabentoTimeseriesClient timeseries = client;
 
-                ICbboRecord[] first = await timeseries.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd);
+                ICbboRecord[] first = await timeseries.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd);
                 first[0] = null;
-                ICbboRecord[] second = await timeseries.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd);
+                ICbboRecord[] second = await timeseries.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd);
 
                 Assert.AreEqual(2, second.Length);
                 Assert.IsNotNull(second[0], "a caller's change to one answer is not seen in the next");
@@ -161,23 +161,23 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                fixture.Databento.Add("cbbo-1m", Cbbo(Call, Day, 1), Cbbo(Put, Day, 2));
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1), Cbbo(Put, Day, 2));
                 ICachedDatabentoClient cached = client;
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd, CacheMode.Use);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd, CacheMode.Use);
 
                 // each line binds at compile time to a call that reads the cache, so none asks Databento again
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd);
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd, CancellationToken.None);
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Symbols, DayStart, DayEnd, default);
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd);
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CancellationToken.None);
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, default);
-                cached.GetCbbo1m("OPRA.PILLAR", Symbols, DayStart, DayEnd);
-                cached.GetCbbo1m("OPRA.PILLAR", Call, DayStart, DayEnd);
-                await client.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CancellationToken.None);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd, CancellationToken.None);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Symbols, DayStart, DayEnd, default);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CancellationToken.None);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, default);
+                cached.GetCbbo1m(Datasets.OpraPillar, Symbols, DayStart, DayEnd);
+                cached.GetCbbo1m(Datasets.OpraPillar, Call, DayStart, DayEnd);
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CancellationToken.None);
 
                 Assert.AreEqual(1, fixture.Databento.TimeseriesRequests.Count);
-                await cached.GetCbbo1mAsync("OPRA.PILLAR", Call, DayStart, DayEnd, CacheMode.Bypass);
+                await cached.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.Bypass);
                 Assert.AreEqual(2, fixture.Databento.TimeseriesRequests.Count);
             }
         }
@@ -190,12 +190,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             {
                 ICachedDatabentoClient cached = client;
 
-                Exception reversed = Catch(() => cached.RunBatchJob("OPRA.PILLAR", "cbbo-1m", Symbols, DayEnd, DayStart, 1m));
-                Exception noCeiling = Catch(() => cached.RunBatchJob("OPRA.PILLAR", "cbbo-1m", Symbols, DayStart, DayEnd, -2.5m));
-                Exception noSymbols = Catch(() => cached.RunBatchJob("OPRA.PILLAR", "cbbo-1m", Array.Empty<string>(), DayStart, DayEnd, 1m));
+                Exception reversed = Catch(() => cached.RunBatchJob(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, Symbols, DayEnd, DayStart, 1m));
+                Exception noCeiling = Catch(() => cached.RunBatchJob(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, Symbols, DayStart, DayEnd, -2.5m));
+                Exception noSymbols = Catch(() => cached.RunBatchJob(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, Array.Empty<string>(), DayStart, DayEnd, 1m));
 
-                Assert.AreEqual(Catch(() => client.RunBatchJob("OPRA.PILLAR", "cbbo-1m", Symbols, DayEnd, DayStart, 1m)).Message, reversed?.Message);
-                Assert.AreEqual(Catch(() => client.RunBatchJob("OPRA.PILLAR", "cbbo-1m", Symbols, DayStart, DayEnd, -2.5m)).Message, noCeiling?.Message);
+                Assert.AreEqual(Catch(() => client.RunBatchJob(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, Symbols, DayEnd, DayStart, 1m)).Message, reversed?.Message);
+                Assert.AreEqual(Catch(() => client.RunBatchJob(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, Symbols, DayStart, DayEnd, -2.5m)).Message, noCeiling?.Message);
                 StringAssert.Contains(noCeiling.Message, "-2.5");
                 Assert.IsInstanceOfType(noSymbols, typeof(ArgumentException));
                 StringAssert.Contains(noSymbols.Message, "symbol");
@@ -225,8 +225,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             using(CachedDatabentoClient client = fixture.CreateClient())
             {
-                Exception own = Catch(() => client.RunBatchJob("OPRA.PILLAR", "no-such-schema", Symbols, DayStart, DayEnd, 1m));
-                Exception throughInterface = Catch(() => ((ICachedDatabentoClient)client).RunBatchJob("OPRA.PILLAR", "no-such-schema", Symbols, DayStart, DayEnd, 1m));
+                Exception own = Catch(() => client.RunBatchJob(Datasets.OpraPillar, "no-such-schema", Symbols, DayStart, DayEnd, 1m));
+                Exception throughInterface = Catch(() => ((ICachedDatabentoClient)client).RunBatchJob(Datasets.OpraPillar, "no-such-schema", Symbols, DayStart, DayEnd, 1m));
 
                 Assert.IsNotNull(own);
                 Assert.AreEqual(own.GetType(), throughInterface?.GetType());
@@ -276,7 +276,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             List<object> arguments = new List<object>();
             foreach(Type parameter in OwnParameters(call))
             {
-                arguments.Add(parameter == typeof(string) && arguments.Count == 0 ? "OPRA.PILLAR"
+                arguments.Add(parameter == typeof(string) && arguments.Count == 0 ? Datasets.OpraPillar
                     : parameter == typeof(string) ? Call
                     : parameter == typeof(IReadOnlyList<string>) ? Symbols
                     : parameter == typeof(DateTimeOffset) && arguments.Count == 2 ? DayStart
