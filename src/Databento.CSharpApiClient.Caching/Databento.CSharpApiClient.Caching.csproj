@@ -20,7 +20,7 @@
     <!-- NuGet packaging -->
     <IsPackable>true</IsPackable>
     <PackageId>Databento.CSharpApiClient.Caching</PackageId>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Authors>Vardan Tovmasyan</Authors>
     <Description>A disk cache and Parquet archive for Databento.CSharpApiClient, so each day of Databento data is paid for once. The client's time-series calls served from per-symbol UTC day files, batch jobs for large ranges, a compactor that folds day files into Parquet any reader can query, and backup and restore of the whole cache.</Description>
     <PackageTags>databento;market-data;cache;parquet;trading;options;futures;historical</PackageTags>
@@ -30,6 +30,19 @@
     <RepositoryUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>
+v1.3.0 - 2026-11-25
+
+Added
+- Databento's metadata and symbology calls on the cached client, passed through uncached: ListDatasets,
+  ListSchemas, ListPublishers, ListFields, ListUnitPrices, GetDatasetCondition, GetDatasetRange, ListConditions,
+  GetRecordCount, GetBillableSize, GetCost and ResolveSymbols, so one client serves the whole Historical API.
+  Async on ICachedDatabentoClient, with default implementations that throw NotSupportedException; their
+  synchronous forms are in CachedDatabentoClientExtensions.
+
+Changed
+- Built on Databento.CSharpApiClient 2.7.1.
+- The DBN client is created only when Transport is Dbn; with the default Json it held an unused one.
+
 v1.2.0 - 2026-11-25
 
 Added
