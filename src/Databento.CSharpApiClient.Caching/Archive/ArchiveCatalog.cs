@@ -17,15 +17,15 @@ namespace Databento.CSharpApiClient.Caching.Archive
 {
     /// <summary>
     /// Answers symbol-days from the current version of their group and month: its newest full file overlaid by the highest generation of
-    /// that file's delta, the delta winning a day both list. Recent versions' indexes are kept in memory, since a published file never
-    /// changes; a file that cannot be read is reported once a day and left out, never touched.
+    /// that file's delta, the delta winning a day both list. Recent versions' files are kept open with their indexes, since a published
+    /// file never changes, so a read parses no footer; a file that cannot be read is reported once a day and left out, never touched.
     /// </summary>
-    internal sealed class ArchiveCatalog
+    internal sealed class ArchiveCatalog : IDisposable
     {
         /// <summary>
-        /// How many group-months' indexes are kept; the least recently used is dropped beyond it, since an options month's index is large
+        /// How many group-months' files are kept open; the least recently used is closed beyond it, since an options month's index is large
         /// </summary>
-        private const int MaxCachedVersions = 32;
+        internal const int MaxCachedVersions = 32;
 
         /// <summary>
         /// How long an unreadable file is left out without reading it again, so a run asking for its days does not parse it each time, while
@@ -49,6 +49,11 @@ namespace Databento.CSharpApiClient.Caching.Archive
         private readonly ConcurrentDictionary<string, LoadedVersion> versionsByPrefix = new ConcurrentDictionary<string, LoadedVersion>(StringComparer.Ordinal);
 
         /// <summary>
+        /// Taken to change <see cref="versionsByPrefix"/>, so each file a change drops is closed once
+        /// </summary>
+        private readonly object versionsLock = new object();
+
+        /// <summary>
         /// Each unreadable file as it was found, when it was last found so, and the UTC day it was reported on
         /// </summary>
         private readonly ConcurrentDictionary<string, UnreadableFile> unreadableFiles = new ConcurrentDictionary<string, UnreadableFile>(StringComparer.Ordinal);
@@ -57,6 +62,16 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// Counts version uses, so the least recently used one can be told apart
         /// </summary>
         private long useCounter;
+
+        /// <summary>
+        /// Set once the catalog is disposed: no file is opened for a version after it
+        /// </summary>
+        private bool disposed;
+
+        /// <summary>
+        /// Files opened and not closed yet, for <see cref="OpenFiles"/>
+        /// </summary>
+        private int openFiles;
 
         public ArchiveCatalog(TimeProvider clock, Action<string, Exception> reportUnreadable, ILogger logger)
         {
@@ -68,6 +83,11 @@ namespace Databento.CSharpApiClient.Caching.Archive
             this.reportUnreadable = reportUnreadable;
             this.logger = logger;
         }
+
+        /// <summary>
+        /// Gets how many archive files are open, so a test can tell a file is closed once no version holds it.
+        /// </summary>
+        internal int OpenFiles => Volatile.Read(ref this.openFiles);
 
         /// <summary>
         /// Reads a symbol-day from the current version in its month folder
@@ -114,11 +134,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
                     }
                     else
                     {
-                        ArchiveFileReader<TSource, TRecord> reader = await ArchiveFile.ReopenAsync(file.Path, schema, file.Index, file.RowGroupStarts).ConfigureAwait(false);
-                        await using(reader.ConfigureAwait(false))
-                        {
-                            records = await reader.ReadSymbolDayAsync(symbol, date).ConfigureAwait(false);
-                        }
+                        records = await ReadAsync(schema, file, symbol, date).ConfigureAwait(false);
                     }
                 }
                 catch(Exception ex) when(IsRetired(ex))
@@ -128,7 +144,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
                 }
                 catch(Exception ex) when(file != null && IsUnreadable(ex))
                 {
-                    this.MarkUnreadable(folder.Directory, prefix, file.Path, file.Stamp, ex);
+                    await this.MarkUnreadableAsync(folder.Directory, prefix, file.Path, file.Stamp, ex).ConfigureAwait(false);
                     return null;
                 }
                 catch(Exception ex) when(IsUnreadable(ex))
@@ -200,6 +216,22 @@ namespace Databento.CSharpApiClient.Caching.Archive
             return false;
         }
 
+        /// <summary>
+        /// Closes every archive file kept open; a read under way finishes first
+        /// </summary>
+        public void Dispose()
+        {
+            List<LoadedIndex> files;
+            lock(this.versionsLock)
+            {
+                this.disposed = true;
+                files = this.versionsByPrefix.Values.SelectMany(version => version.Files).ToList();
+                this.versionsByPrefix.Clear();
+            }
+
+            this.CloseAsync(files).AsTask().GetAwaiter().GetResult();
+        }
+
         private static bool IsRetired(Exception ex)
         {
             return ex is FileNotFoundException || ex is DirectoryNotFoundException;
@@ -214,14 +246,36 @@ namespace Databento.CSharpApiClient.Caching.Archive
             return ex is InvalidDataException || (ex is IOException && !IsRetired(ex)) || ex is UnauthorizedAccessException;
         }
 
-        private static async Task<LoadedIndex> ReadIndexAsync<TSource, TRecord>(ArchiveRecordSchema<TSource, TRecord> schema, string path, FileStamp stamp)
+        /// <summary>
+        /// Reads a symbol-day from a file's open reader, or from a handle of its own when another request closed the reader since this one
+        /// found it, its version replaced or dropped
+        /// </summary>
+        private static async Task<TRecord[]> ReadAsync<TSource, TRecord>(ArchiveRecordSchema<TSource, TRecord> schema, LoadedIndex file, string symbol, DateTime date)
             where TSource : class, IRecord
             where TRecord : class, TSource
         {
-            ArchiveFileReader<TSource, TRecord> reader = await ArchiveFile.OpenAsync(path, schema).ConfigureAwait(false);
-            await using(reader.ConfigureAwait(false))
+            try
             {
-                return new LoadedIndex(path, stamp, reader.Index, reader.RowGroupStarts);
+                return await ((ArchiveFileReader<TSource, TRecord>)file.Reader).ReadSymbolDayAsync(symbol, date).ConfigureAwait(false);
+            }
+            catch(ObjectDisposedException)
+            {
+                ArchiveFileReader<TSource, TRecord> reader = await ArchiveFile.OpenAsync(file.Path, schema).ConfigureAwait(false);
+                await using(reader.ConfigureAwait(false))
+                {
+                    return await reader.ReadSymbolDayAsync(symbol, date).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private async ValueTask CloseAsync(IEnumerable<LoadedIndex> files)
+        {
+            foreach(LoadedIndex file in files)
+            {
+                if(await file.CloseAsync().ConfigureAwait(false))
+                {
+                    Interlocked.Decrement(ref this.openFiles);
+                }
             }
         }
 
@@ -245,6 +299,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
             where TSource : class, IRecord
             where TRecord : class, TSource
         {
+            ObjectDisposedException.ThrowIf(this.disposed, this);
             ArchiveVersion version = ArchiveFileName.FindCurrentVersion(folder.Files, prefix);
             if(version == null)
             {
@@ -254,26 +309,42 @@ namespace Databento.CSharpApiClient.Caching.Archive
             string key = Path.Combine(folder.Directory, prefix);
             this.versionsByPrefix.TryGetValue(key, out LoadedVersion cached);
             List<LoadedIndex> files = new List<LoadedIndex>();
+            List<LoadedIndex> opened = new List<LoadedIndex>();
             bool unchanged = cached != null && cached.Files.Count == version.Paths.Count;
-            foreach(string path in version.Paths)
+            try
             {
-                FileStamp stamp = GetStamp(path);
-                LoadedIndex file = cached?.Files.FirstOrDefault(loaded => string.Equals(loaded.Path, path, StringComparison.Ordinal) && loaded.Stamp == stamp);
-                if(file == null)
+                foreach(string path in version.Paths)
                 {
-                    unchanged = false;
-                    file = await this.TryReadIndexAsync(schema, folder.Directory, prefix, path, stamp).ConfigureAwait(false);
-                }
+                    FileStamp stamp = GetStamp(path);
+                    // a file closed since, by a request that dropped the version it was taken from, is opened again
+                    LoadedIndex file = cached?.Files.FirstOrDefault(loaded => string.Equals(loaded.Path, path, StringComparison.Ordinal) && loaded.Stamp == stamp && loaded.IsOpen);
+                    if(file == null)
+                    {
+                        unchanged = false;
+                        file = await this.TryOpenAsync(schema, folder.Directory, prefix, path, stamp).ConfigureAwait(false);
+                        if(file != null)
+                        {
+                            opened.Add(file);
+                        }
+                    }
 
-                if(file != null)
-                {
-                    files.Add(file);
+                    if(file != null)
+                    {
+                        files.Add(file);
+                    }
+                    else if(string.Equals(path, version.FullPath, StringComparison.Ordinal))
+                    {
+                        // a delta only adds to its full file, so without the full file the group-month is not cached
+                        await this.CloseAsync(opened).ConfigureAwait(false);
+                        return null;
+                    }
                 }
-                else if(string.Equals(path, version.FullPath, StringComparison.Ordinal))
-                {
-                    // a delta only adds to its full file, so without the full file the group-month is not cached
-                    return null;
-                }
+            }
+            catch
+            {
+                // a file retired while the version was found: the files opened for it are no version's
+                await this.CloseAsync(opened).ConfigureAwait(false);
+                throw;
             }
 
             // any other set of files replaces the cached one: a new delta generation or full file, an older version restored, or one copied over a file
@@ -281,19 +352,18 @@ namespace Databento.CSharpApiClient.Caching.Archive
             loadedVersion.LastUse = Interlocked.Increment(ref this.useCounter);
             if(!unchanged)
             {
-                this.versionsByPrefix[key] = loadedVersion;
-                this.DropLeastRecentlyUsed();
+                await this.CloseAsync(this.Store(key, loadedVersion, opened)).ConfigureAwait(false);
             }
 
             return loadedVersion;
         }
 
         /// <summary>
-        /// Reads a file's index
+        /// Opens a file and reads its index
         /// </summary>
-        /// <returns>The index, or <c>null</c> for a file that cannot be read, or was found so a moment ago and is unchanged since</returns>
+        /// <returns>The open file, or <c>null</c> for a file that cannot be read, or was found so a moment ago and is unchanged since</returns>
         /// <exception cref="FileNotFoundException">The file was retired while it was being read</exception>
-        private async Task<LoadedIndex> TryReadIndexAsync<TSource, TRecord>(ArchiveRecordSchema<TSource, TRecord> schema, string directory, string prefix, string path, FileStamp stamp)
+        private async Task<LoadedIndex> TryOpenAsync<TSource, TRecord>(ArchiveRecordSchema<TSource, TRecord> schema, string directory, string prefix, string path, FileStamp stamp)
             where TSource : class, IRecord
             where TRecord : class, TSource
         {
@@ -304,21 +374,67 @@ namespace Databento.CSharpApiClient.Caching.Archive
 
             try
             {
-                return await ReadIndexAsync(schema, path, stamp).ConfigureAwait(false);
+                ArchiveFileReader<TSource, TRecord> reader = await ArchiveFile.OpenAsync(path, schema).ConfigureAwait(false);
+                Interlocked.Increment(ref this.openFiles);
+                return new LoadedIndex(path, stamp, reader.Index, reader);
             }
             catch(Exception ex) when(IsUnreadable(ex))
             {
-                this.MarkUnreadable(directory, prefix, path, stamp, ex);
+                await this.MarkUnreadableAsync(directory, prefix, path, stamp, ex).ConfigureAwait(false);
                 return null;
             }
         }
 
-        private void DropLeastRecentlyUsed()
+        /// <summary>
+        /// Holds a version in place of the one held for its prefix, and drops the least recently used beyond <see cref="MaxCachedVersions"/>
+        /// </summary>
+        /// <returns>The files no longer held, to close</returns>
+        private List<LoadedIndex> Store(string key, LoadedVersion version, IReadOnlyList<LoadedIndex> opened)
         {
-            while(this.versionsByPrefix.Count > MaxCachedVersions)
+            List<LoadedIndex> dropped = new List<LoadedIndex>();
+            lock(this.versionsLock)
             {
-                KeyValuePair<string, LoadedVersion> oldest = this.versionsByPrefix.MinBy(entry => entry.Value.LastUse);
-                this.versionsByPrefix.TryRemove(oldest);
+                if(this.disposed)
+                {
+                    dropped.AddRange(opened);
+                    return dropped;
+                }
+
+                if(this.versionsByPrefix.TryGetValue(key, out LoadedVersion replaced))
+                {
+                    dropped.AddRange(replaced.Files.Except(version.Files));
+                }
+
+                this.versionsByPrefix[key] = version;
+                while(this.versionsByPrefix.Count > MaxCachedVersions)
+                {
+                    KeyValuePair<string, LoadedVersion> oldest = this.versionsByPrefix.MinBy(entry => entry.Value.LastUse);
+                    this.versionsByPrefix.TryRemove(oldest);
+                    dropped.AddRange(oldest.Value.Files);
+                }
+            }
+
+            return dropped;
+        }
+
+        /// <summary>
+        /// Forgets and closes the version held for a prefix when it holds the file, so the next read finds the version again
+        /// </summary>
+        private async ValueTask DropVersionAsync(string directory, string prefix, string path)
+        {
+            string key = Path.Combine(directory, prefix);
+            LoadedVersion dropped = null;
+            lock(this.versionsLock)
+            {
+                if(this.versionsByPrefix.TryGetValue(key, out LoadedVersion cached) && cached.Files.Any(file => string.Equals(file.Path, path, StringComparison.Ordinal)))
+                {
+                    this.versionsByPrefix.TryRemove(key, out dropped);
+                }
+            }
+
+            if(dropped != null)
+            {
+                await this.CloseAsync(dropped.Files).ConfigureAwait(false);
             }
         }
 
@@ -326,13 +442,9 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// Forgets the cached version holding the file and remembers the file as unreadable, reporting it once a day per file as it stood
         /// when it failed
         /// </summary>
-        private void MarkUnreadable(string directory, string prefix, string path, FileStamp stamp, Exception ex)
+        private async ValueTask MarkUnreadableAsync(string directory, string prefix, string path, FileStamp stamp, Exception ex)
         {
-            string key = Path.Combine(directory, prefix);
-            if(this.versionsByPrefix.TryGetValue(key, out LoadedVersion cached) && cached.Files.Any(file => string.Equals(file.Path, path, StringComparison.Ordinal)))
-            {
-                this.versionsByPrefix.TryRemove(new KeyValuePair<string, LoadedVersion>(key, cached));
-            }
+            await this.DropVersionAsync(directory, prefix, path).ConfigureAwait(false);
 
             // set atomically, so two reads failing on the same file at once report it once between them
             DateTime now = this.clock.GetUtcNow().UtcDateTime;
@@ -371,9 +483,51 @@ namespace Databento.CSharpApiClient.Caching.Archive
         private readonly record struct UnreadableFile(FileStamp Stamp, DateTime ReportedOn, DateTime FoundUtc);
 
         /// <summary>
-        /// An archive file's path, its parsed index and row-group layout
+        /// An archive file's path, its parsed index, and its reader, open while a version holds it
         /// </summary>
-        private sealed record LoadedIndex(string Path, FileStamp Stamp, ArchiveIndex Index, IReadOnlyList<long> RowGroupStarts);
+        private sealed class LoadedIndex
+        {
+            /// <summary>
+            /// 1 once the file is closed, so a file two versions held in a race is closed once
+            /// </summary>
+            private int closed;
+
+            public LoadedIndex(string path, FileStamp stamp, ArchiveIndex index, IAsyncDisposable reader)
+            {
+                this.Path = path;
+                this.Stamp = stamp;
+                this.Index = index;
+                this.Reader = reader;
+            }
+
+            public string Path { get; }
+
+            public FileStamp Stamp { get; }
+
+            public ArchiveIndex Index { get; }
+
+            public IAsyncDisposable Reader { get; }
+
+            /// <summary>
+            /// Gets whether the file is still open; one closed by an evicted or replaced version is opened again when found.
+            /// </summary>
+            public bool IsOpen => Volatile.Read(ref this.closed) == 0;
+
+            /// <summary>
+            /// Closes the file, unless it is closed already
+            /// </summary>
+            /// <returns>Whether this call closed it</returns>
+            public async ValueTask<bool> CloseAsync()
+            {
+                if(Interlocked.Exchange(ref this.closed, 1) != 0)
+                {
+                    return false;
+                }
+
+                await this.Reader.DisposeAsync().ConfigureAwait(false);
+                return true;
+            }
+        }
 
         /// <summary>
         /// The readable files of a version, its full file and then its current delta, and when the version was last used

@@ -38,6 +38,11 @@ namespace Databento.CSharpApiClient.Caching
 
         private readonly BatchJobs batchJobs;
 
+        /// <summary>
+        /// The archive files read, kept open between calls
+        /// </summary>
+        private readonly ArchiveCatalog catalog;
+
         private readonly ILogger logger;
 
         /// <summary>
@@ -64,8 +69,8 @@ namespace Databento.CSharpApiClient.Caching
             this.logger = settings.Logger;
             this.jsonClient = new DatabentoJsonClient(settings.Databento, transport);
             this.dbnClient = settings.Transport == DatabentoTransport.Dbn ? new DatabentoClient(settings.Databento, transport) : null;
-            ArchiveCatalog catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable, settings.Logger);
-            SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, catalog, settings.Logger);
+            this.catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable, settings.Logger);
+            SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, this.catalog, settings.Logger);
             DatasetAvailability availability = new DatasetAvailability();
             this.timeseries = new CachedTimeseries(settings, this.jsonClient, this.dbnClient, store, availability);
             this.batchJobs = new BatchJobs(settings, this.jsonClient, store, availability, new BatchIngestion(settings, this.jsonClient, store));
@@ -84,12 +89,13 @@ namespace Databento.CSharpApiClient.Caching
         internal DatabentoClient DbnClient => this.dbnClient;
 
         /// <summary>
-        /// Releases the Databento clients and their HTTP transport
+        /// Releases the Databento clients and their HTTP transport, and closes the archive files kept open
         /// </summary>
         public void Dispose()
         {
             this.jsonClient.Dispose();
             this.dbnClient?.Dispose();
+            this.catalog.Dispose();
         }
 
         private static CachedDatabentoClientOptions CopyChecked(CachedDatabentoClientOptions options)

@@ -159,7 +159,8 @@ namespace Databento.CSharpApiClient.Caching.Archive
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
 
-            FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            // a reader is kept open between reads, so it lets a compaction retire the file and a restore or a copy replace it
+            FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             try
             {
                 ArchiveFileReader<TSource, TRecord> reader = await OpenCoreAsync(stream, schema, leaveStreamOpen: false).ConfigureAwait(false);
@@ -197,44 +198,6 @@ namespace Databento.CSharpApiClient.Caching.Archive
             ArgumentNullException.ThrowIfNull(stream);
 
             return OpenCoreAsync(stream, schema, leaveStreamOpen: true);
-        }
-
-        /// <summary>
-        /// Opens an archive file on disk again with the index and row-group layout an earlier open read from it: a published file never
-        /// changes, so only its row-group count is checked and the index is not parsed again.
-        /// </summary>
-        /// <typeparam name="TSource">Record interface</typeparam>
-        /// <typeparam name="TRecord">Record type a read returns</typeparam>
-        /// <param name="path">File path</param>
-        /// <param name="schema">Archive schema of the Databento schema</param>
-        /// <param name="index">Index an earlier open of the file read</param>
-        /// <param name="rowGroupStarts">Row-group layout an earlier open of the file read</param>
-        /// <returns>The reader, which owns the file handle</returns>
-        /// <exception cref="InvalidDataException">The file cannot be read as Parquet, or its row groups are not the ones given</exception>
-        internal static async Task<ArchiveFileReader<TSource, TRecord>> ReopenAsync<TSource, TRecord>(string path, ArchiveRecordSchema<TSource, TRecord> schema, ArchiveIndex index, IReadOnlyList<long> rowGroupStarts)
-            where TSource : class, IRecord
-            where TRecord : class, TSource
-        {
-            FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-            ParquetReader reader;
-            try
-            {
-                reader = await ParquetReader.CreateAsync(stream, ReaderOptions, leaveStreamOpen: false).ConfigureAwait(false);
-            }
-            catch(Exception ex) when(ex is not OperationCanceledException)
-            {
-                await stream.DisposeAsync().ConfigureAwait(false);
-                throw new InvalidDataException(Invariant($"Cannot be read as a Parquet file: {ex.Message}"), ex);
-            }
-
-            if(reader.RowGroupCount != rowGroupStarts.Count)
-            {
-                int count = reader.RowGroupCount;
-                await reader.DisposeAsync().ConfigureAwait(false);
-                throw new InvalidDataException(Invariant($"The file holds {count} row groups, but {rowGroupStarts.Count} were read from it before."));
-            }
-
-            return new ArchiveFileReader<TSource, TRecord>(reader, schema, index, rowGroupStarts as long[] ?? rowGroupStarts.ToArray());
         }
 
         /// <summary>
