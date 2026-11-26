@@ -104,7 +104,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                 {
                     if(logServed)
                     {
-                        this.logger.ServedFromDayFile(symbol, day, folder.Schema, path, records.Length);
+                        this.logger.ServedFromDayFile(symbol, day, folder.Schema, Path.GetFileName(path), records.Length);
                     }
 
                     return records;
@@ -167,15 +167,15 @@ namespace Databento.CSharpApiClient.Caching.Client
             bool saved = await DayFile.WriteAsync(path, records, overwrite, cancellationToken).ConfigureAwait(false);
             if(saved && records.Count == 0 && emptyReason != null)
             {
-                this.logger.EmptyDaySaved(symbol, day, schema, path, emptyReason);
+                this.logger.EmptyDaySaved(symbol, day, schema, Path.GetFileName(path), emptyReason);
             }
             else if(saved)
             {
-                this.logger.Saved(symbol, day, schema, records.Count, path);
+                this.logger.Saved(symbol, day, schema, records.Count, Path.GetFileName(path));
             }
             else
             {
-                this.logger.DayFileKept(path, records.Count, symbol, day, schema);
+                this.logger.DayFileKept(Path.GetFileName(path), records.Count, symbol, day, schema);
             }
 
             return saved;

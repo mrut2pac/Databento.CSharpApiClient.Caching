@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+- The per-day Debug lines name the file without its folder: a day served from its day file or the archive (1002 and 1003, now both "{Symbol} {Day} {Schema} served from {File}, {RecordCount} records"), a day saved (1014), a day file kept (1015) and an empty day saved (1017). The structured property is `File` instead of `Path`. Warnings and errors about a file still give its full path.
+
 ## [1.5.0] - 2026-11-27
 
 ### Added

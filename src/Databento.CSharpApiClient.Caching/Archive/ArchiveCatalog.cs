@@ -140,7 +140,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
                 // logged once the read is done, apart from its failures
                 if(records != null && logServed)
                 {
-                    this.logger.ServedFromArchive(symbol, date, folder.Schema, file.Path, records.Length);
+                    this.logger.ServedFromArchive(symbol, date, folder.Schema, Path.GetFileName(file.Path), records.Length);
                 }
 
                 return records;

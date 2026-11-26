@@ -50,7 +50,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     logger.AssertLogged(LogLevel.Debug, "Serving cbbo-1m of OPRA.PILLAR for " + Call, "2026-10-16T00:00:00Z to 2026-10-17T00:00:00Z", "cache mode Use");
                     logger.AssertLogged(LogLevel.Information, "Requesting cbbo-1m of OPRA.PILLAR for " + Call, "UTC days 2026-10-16 to 2026-10-16", "from Databento");
                     logger.AssertLogged(LogLevel.Information, "Got 2 cbbo-1m records of OPRA.PILLAR from Databento", "1 of the 1 symbol(s)", "Took 00:00:03");
-                    logger.AssertLogged(LogLevel.Debug, "Saved " + Call + " 2026-10-16 cbbo-1m with 2 records", fixture.DayFilePath(CacheFixture.Cbbo, Call, Day));
+                    logger.AssertLogged(LogLevel.Debug, "Saved " + Call + " 2026-10-16 cbbo-1m with 2 records as " + Path.GetFileName(fixture.DayFilePath(CacheFixture.Cbbo, Call, Day)));
                 }
             }
         }
@@ -69,7 +69,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                     await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
-                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m served from its day file", fixture.DayFilePath(CacheFixture.Cbbo, Call, Day), "1 records");
+                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m served from " + Path.GetFileName(fixture.DayFilePath(CacheFixture.Cbbo, Call, Day)) + ", 1 records");
+                    logger.AssertNotLogged(Path.GetDirectoryName(fixture.DayFilePath(CacheFixture.Cbbo, Call, Day)));
                     Assert.AreEqual(0, logger.Entries.Count(entry => entry.Level >= LogLevel.Information));
                     logger.AssertNotLogged("Requesting");
                 }
@@ -88,7 +89,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                     await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd, CacheMode.CacheOnly);
 
-                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m served from the archive file", archive, "2 records");
+                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m served from " + Path.GetFileName(archive) + ", 2 records");
+                    logger.AssertNotLogged(Path.GetDirectoryName(archive));
                 }
             }
         }
@@ -205,7 +207,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 {
                     await client.GetCbbo1mAsync(Datasets.OpraPillar, Unlisted, DayStart, DayEnd);
 
-                    logger.AssertLogged(LogLevel.Debug, Unlisted + " 2026-10-16 cbbo-1m answered no records and is saved as empty as " + fixture.DayFilePath(CacheFixture.Cbbo, Unlisted, Day), "it was not listed");
+                    logger.AssertLogged(LogLevel.Debug, Unlisted + " 2026-10-16 cbbo-1m answered no records and is saved as empty as " + Path.GetFileName(fixture.DayFilePath(CacheFixture.Cbbo, Unlisted, Day)) + ":", "it was not listed");
                     Assert.AreEqual(1, logger.Find(LogLevel.Debug, Unlisted + " 2026-10-16 cbbo-1m answered no records").Length, "one line per empty day saved");
                     logger.AssertNotLogged("Saved ");
                 }
@@ -561,7 +563,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     await client.GetCbbo1mAsync(Datasets.OpraPillar, new[] { Call, Put }, DayStart, DayEnd, CacheMode.Bypass);
 
                     logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m answered no records on a bypass");
-                    logger.AssertNotLogged("served from its day file");
+                    logger.AssertNotLogged(" served from ");
                     logger.AssertNotLogged("is not cached");
                 }
             }
@@ -643,7 +645,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                     await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
-                    logger.AssertLogged(LogLevel.Debug, "Kept the day file " + fixture.DayFilePath(CacheFixture.Cbbo, Call, Day), "the 2 records of " + Call);
+                    logger.AssertLogged(LogLevel.Debug, "Kept the day file " + Path.GetFileName(fixture.DayFilePath(CacheFixture.Cbbo, Call, Day)) + " already there", "the 2 records of " + Call);
                     logger.AssertNotLogged("Saved ");
                 }
             }
