@@ -58,12 +58,23 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
 
             await this.CreateCompactor().CompactAsync();
 
-            this.logger.AssertLogged(LogLevel.Information, "Compacting " + this.cache.Root, "mode Delta", "dry run False", "1 group(s) with 2 day file(s)");
+            this.logger.AssertLogged(LogLevel.Information, "Compacting " + this.cache.Root + " in Delta mode: 1 group(s) with 2 day file(s) planned ...");
+            this.logger.AssertLogged(LogLevel.Information, "Listing " + this.cache.Root + " to plan the compaction ...");
             this.logger.AssertLogged(LogLevel.Debug, "Compacting " + GroupName, "2 day file(s)");
             this.logger.AssertLogged(LogLevel.Debug, "Wrote ", NewFullFile);
             this.logger.AssertLogged(LogLevel.Debug, "Verified ", NewFullFile);
             this.logger.AssertLogged(LogLevel.Debug, "Published " + Path.Combine(this.cache.CbboDirectory, NewFullFile), "2 symbol-day(s)", "2 day file(s) absorbed");
             this.logger.AssertLogged(LogLevel.Information, "Compaction of " + this.cache.Root + " done", "1 group(s) compacted", "0 failed", "2 day file(s) absorbed");
+        }
+
+        [TestMethod]
+        public async Task CompactAsync_DryRun_SaysSoInItsFirstLine()
+        {
+            this.cache.SaveCbbo(Call, October16, 6600.5);
+
+            await this.CreateCompactor(options => options.DryRun = true).CompactAsync();
+
+            this.logger.AssertLogged(LogLevel.Information, "Compacting " + this.cache.Root + " in Delta mode, as a dry run: 1 group(s) with 1 day file(s) planned ...");
         }
 
         [TestMethod]

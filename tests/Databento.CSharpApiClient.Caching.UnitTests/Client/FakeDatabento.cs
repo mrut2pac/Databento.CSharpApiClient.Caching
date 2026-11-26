@@ -19,8 +19,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
     /// <summary>
     /// Databento's historical API as the cached client uses it, in memory: time series from the records added, filtered by symbol and by
     /// <c>ts_recv</c> (<c>ts_event</c> for OHLCV) over the range, as JSON lines or as a CBBO DBN stream; the dataset range and conditions;
-    /// and symbology from the listings given, a symbol without one being not found. A time-series request naming an unlisted symbol is
-    /// refused as Databento refuses it. Every request is recorded.
+    /// and symbology from the listings given, a symbol without one being not found. A time-series request starting at or ending past the
+    /// schema's available end, or naming an unlisted symbol, is refused as Databento refuses it. Every request is recorded.
     /// </summary>
     internal sealed class FakeDatabento : IHttpTransport
     {
@@ -46,6 +46,17 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         /// Gets the dataset condition of each day that is not <c>available</c>, by date.
         /// </summary>
         public Dictionary<DateTime, string> Conditions { get; } = new Dictionary<DateTime, string>();
+
+        /// <summary>
+        /// Gets the days the conditions answer leaves out, as Databento leaves out a weekend, or a day it has not reached yet.
+        /// </summary>
+        public HashSet<DateTime> OmittedConditions { get; } = new HashSet<DateTime>();
+
+        /// <summary>
+        /// Gets or sets the latest day the conditions answer lists, as Databento has not reached a later one yet; <c>null</c> for the last
+        /// whole day before the available end.
+        /// </summary>
+        public DateTime? LastConditionDay { get; set; }
 
         /// <summary>
         /// Gets the days each listed symbol was listed on: start inclusive, end exclusive. A symbol not here is not found.
@@ -232,6 +243,19 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
         private HttpResponseMessage AnswerTimeseries(FakeRequest request)
         {
+            // as Databento does, a request starting at or past the schema's available end is refused for its start, and one ending past
+            // it for its end, not cut
+            DateTime availableEnd = this.SchemaEnds.TryGetValue(request.Fields["schema"], out DateTime schemaEnd) ? schemaEnd : this.AvailableEndUtc;
+            if(request.StartUtc.UtcDateTime >= availableEnd)
+            {
+                return Error(HttpStatusCode.UnprocessableEntity, "data_start_after_available_end");
+            }
+
+            if(request.EndUtc.UtcDateTime > availableEnd)
+            {
+                return Error(HttpStatusCode.UnprocessableEntity, "data_end_after_available_end");
+            }
+
             string[] unlisted = request.Symbols.Where(symbol => !this.Listings.ContainsKey(symbol)).ToArray();
             if(unlisted.Length > 0)
             {
@@ -276,15 +300,28 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         private HttpResponseMessage AnswerConditions(FakeRequest request)
         {
             DateTime first = DateTime.ParseExact(request.Fields["start_date"], DateFormat, CultureInfo.InvariantCulture);
-            DateTime last = DateTime.ParseExact(request.Fields["end_date"], DateFormat, CultureInfo.InvariantCulture);
-            if(last.AddDays(1) > this.AvailableEndUtc)
+
+            // with no end date, Databento answers up to its latest listed day
+            DateTime last = this.LastConditionDay ?? this.AvailableEndUtc.AddDays(-1).Date;
+            if(request.Fields.TryGetValue("end_date", out string endDate))
             {
-                return Error(HttpStatusCode.UnprocessableEntity, "data_end_after_available_end");
+                DateTime asked = DateTime.ParseExact(endDate, DateFormat, CultureInfo.InvariantCulture);
+                if(asked.AddDays(1) > this.AvailableEndUtc)
+                {
+                    return Error(HttpStatusCode.UnprocessableEntity, "data_end_after_available_end");
+                }
+
+                last = asked < last ? asked : last;
             }
 
             List<string> days = new List<string>();
             for(DateTime day = first; day <= last; day = day.AddDays(1))
             {
+                if(this.OmittedConditions.Contains(day))
+                {
+                    continue;
+                }
+
                 string condition = this.Conditions.TryGetValue(day, out string set) ? set : "available";
                 days.Add(Invariant($"{{\"date\":\"{day:yyyy-MM-dd}\",\"condition\":\"{condition}\",\"last_modified_date\":\"{day:yyyy-MM-dd}\"}}"));
             }
