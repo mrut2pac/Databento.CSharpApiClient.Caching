@@ -68,8 +68,6 @@ The defaults suit a backtest or research host. Change one when its row describes
 | `MaxSymbolsPerRequest` | 2,000 | You want smaller requests, for example to spread a large download over more, shorter calls. |
 | `Transport` | `Json` | You prefer DBN on the wire; the cache saves the same JSON records either way. |
 
-For the compactor, see [Compaction](#compaction): run it with Server GC, and raise `MaxParallelGroups` (1 by default) only while CPU, not the disk, is the limit.
-
 ## Batch jobs
 
 ```csharp
