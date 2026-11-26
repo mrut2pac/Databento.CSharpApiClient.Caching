@@ -20,7 +20,7 @@
     <!-- NuGet packaging -->
     <IsPackable>true</IsPackable>
     <PackageId>Databento.CSharpApiClient.Caching</PackageId>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
     <Authors>Vardan Tovmasyan</Authors>
     <Description>A disk cache and Parquet archive for Databento.CSharpApiClient, so each day of Databento data is paid for once. The client's time-series calls served from per-symbol UTC day files, batch jobs for large ranges, a compactor that folds day files into Parquet any reader can query, and backup and restore of the whole cache.</Description>
     <PackageTags>databento;market-data;cache;parquet;trading;options;futures;historical</PackageTags>
@@ -30,6 +30,12 @@
     <RepositoryUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>
+v1.4.1 - 2026-11-26
+
+Changed
+- Log messages end without a period, which read as part of a path or a name before it; a step under way ends
+  with " ..." instead.
+
 v1.4.0 - 2026-11-26
 
 Added
