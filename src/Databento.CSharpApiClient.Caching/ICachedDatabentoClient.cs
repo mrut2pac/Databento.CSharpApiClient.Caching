@@ -184,6 +184,25 @@ namespace Databento.CSharpApiClient.Caching
         /// <returns>What was saved, and the days left out</returns>
         Task<BatchReport> IngestBatchFolderAsync(string folder, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Makes sure the cache holds a range's symbol-days, returning no records: finds the cached ones by day file name and the archive's
+        /// index, reading no record, and downloads only the others, saving them as the time-series calls with <see cref="CacheMode.Use"/>
+        /// do. For a host that fills the cache for many symbols at once and reads the records later, or never.
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="schema">Databento schema the cache holds, e.g. <c>cbbo-1m</c></param>
+        /// <param name="symbols">Databento raw symbols</param>
+        /// <param name="startUtc">Start of the range, inclusive; its whole UTC day is made sure of</param>
+        /// <param name="endUtc">End of the range, exclusive; its whole UTC day is made sure of</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The symbol-days found cached, saved, and still not cached</returns>
+        /// <exception cref="Databento.CSharpApiClient.Exceptions.DatabentoHttpException">Databento refused a download; or, with <see cref="AvailableEndRefusal.Throw"/>, a
+        /// download was cut at the available end, thrown once the days before it are saved</exception>
+        Task<EnsureCachedReport> EnsureCachedAsync(string dataset, string schema, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("EnsureCachedAsync is not implemented.");
+        }
+
         // as the client's own interface, every call reads the cache
         Task<ICbboRecord[]> IDatabentoTimeseriesClient.GetCbbo1sAsync(string dataset, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken)
         {

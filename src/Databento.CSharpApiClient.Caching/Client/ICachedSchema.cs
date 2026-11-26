@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,5 +37,17 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns><c>true</c> when a day file or the archive holds the day, empty or not</returns>
         Task<bool> ContainsAsync(SymbolDayStore store, CacheMonthFolder folder, string symbol, DateTime day, bool strict, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Makes sure the cache holds a range of this schema, reading no cached record
+        /// </summary>
+        /// <param name="timeseries">The downloads that save what is missing</param>
+        /// <param name="dataset">Databento dataset</param>
+        /// <param name="symbols">Databento raw symbols</param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The symbol-days found cached, saved and not saved</returns>
+        Task<EnsureCachedReport> EnsureCachedAsync(CachedTimeseries timeseries, string dataset, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken);
     }
 }

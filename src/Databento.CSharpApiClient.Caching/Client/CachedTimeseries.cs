@@ -88,6 +88,70 @@ namespace Databento.CSharpApiClient.Caching.Client
             where TRecord : class, TSource
             where TJson : class, TSource
         {
+            List<string> distinctSymbols = CheckRange(dataset, symbols, startUtc, endUtc);
+            if(!Enum.IsDefined(cacheMode))
+            {
+                throw new ArgumentOutOfRangeException(nameof(cacheMode), cacheMode, null);
+            }
+
+            this.logger.TimeseriesRequested(schema.Name, dataset, distinctSymbols, startUtc, endUtc, cacheMode);
+            List<DateTime> days = GetDays(startUtc, endUtc);
+            Dictionary<SymbolDay, TSource[]> served = new Dictionary<SymbolDay, TSource[]>();
+            HashSet<SymbolDay> pending = new HashSet<SymbolDay>(distinctSymbols.SelectMany(symbol => days.Select(day => new SymbolDay(symbol, day))));
+            if(cacheMode != CacheMode.Bypass)
+            {
+                await this.ReadCachedAsync(schema, dataset, pending, served, cancellationToken).ConfigureAwait(false);
+            }
+
+            if(cacheMode == CacheMode.CacheOnly && pending.Count > 0)
+            {
+                throw new NotCachedException(dataset, schema.Name, pending.Select(symbolDay => new KeyValuePair<string, DateTime>(symbolDay.Symbol, symbolDay.Day)));
+            }
+
+            await this.DownloadPendingAsync(schema, dataset, pending, cacheMode, served, cancellationToken).ConfigureAwait(false);
+            return Assemble(schema, distinctSymbols, days, served, startUtc.UtcDateTime, endUtc.UtcDateTime);
+        }
+
+        /// <summary>
+        /// Makes sure the cache holds a range's symbol-days: finds the cached ones by day file name and archive index, reading no record,
+        /// and downloads and saves the others as <see cref="GetAsync"/> with <see cref="CacheMode.Use"/> does, keeping no record once saved
+        /// </summary>
+        /// <param name="schema">Schema cached</param>
+        /// <param name="dataset">Databento dataset</param>
+        /// <param name="symbols">Databento raw symbols</param>
+        /// <param name="startUtc">Start of the range, inclusive</param>
+        /// <param name="endUtc">End of the range, exclusive</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The symbol-days found cached, saved and not saved</returns>
+        public async Task<EnsureCachedReport> EnsureCachedAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+            where TJson : class, TSource
+        {
+            List<string> distinctSymbols = CheckRange(dataset, symbols, startUtc, endUtc);
+            List<DateTime> days = GetDays(startUtc, endUtc);
+            List<SymbolDay> asked = distinctSymbols.SelectMany(symbol => days.Select(day => new SymbolDay(symbol, day))).ToList();
+            HashSet<SymbolDay> pending = new HashSet<SymbolDay>(asked);
+            await this.ReadCachedAsync(schema, dataset, pending, null, cancellationToken).ConfigureAwait(false);
+            List<SymbolDay> missing = asked.Where(pending.Contains).ToList();
+            DateTime? cutAtUtc = await this.DownloadPendingAsync(schema, dataset, pending, CacheMode.Use, null, cancellationToken).ConfigureAwait(false);
+
+            // what the download left uncached is found as the cached days were: by name and index
+            HashSet<SymbolDay> notCached = new HashSet<SymbolDay>(missing);
+            await this.ReadCachedAsync(schema, dataset, notCached, null, cancellationToken).ConfigureAwait(false);
+            DateTimeOffset nowUtc = this.options.TimeProvider.GetUtcNow();
+            int pastEnd = notCached.Count(symbolDay => GetDayEnd(symbolDay.Day) > cutAtUtc);
+            int notSettled = notCached.Count(symbolDay => !(GetDayEnd(symbolDay.Day) > cutAtUtc) && !IsSettled(symbolDay.Day, nowUtc, this.options.SettleDelay));
+            List<KeyValuePair<string, DateTime>> notCachedDays = missing.Where(notCached.Contains).Select(symbolDay => new KeyValuePair<string, DateTime>(symbolDay.Symbol, symbolDay.Day)).ToList();
+            return new EnsureCachedReport(asked.Count - missing.Count, missing.Count - notCached.Count, pastEnd, notSettled, notCachedDays);
+        }
+
+        /// <summary>
+        /// Checks a range's arguments
+        /// </summary>
+        /// <returns>The symbols, each once, in the order given</returns>
+        private static List<string> CheckRange(string dataset, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc)
+        {
             ArgumentException.ThrowIfNullOrEmpty(dataset);
             ArgumentNullException.ThrowIfNull(symbols);
             if(symbols.Count == 0 || symbols.Any(string.IsNullOrEmpty))
@@ -105,26 +169,21 @@ namespace Databento.CSharpApiClient.Caching.Client
                 throw new ArgumentException(Invariant($"The range ends ({endUtc:O}) at or before it starts ({startUtc:O})."), nameof(endUtc));
             }
 
-            if(!Enum.IsDefined(cacheMode))
-            {
-                throw new ArgumentOutOfRangeException(nameof(cacheMode), cacheMode, null);
-            }
+            return symbols.Distinct(StringComparer.Ordinal).ToList();
+        }
 
-            List<string> distinctSymbols = symbols.Distinct(StringComparer.Ordinal).ToList();
-            this.logger.TimeseriesRequested(schema.Name, dataset, distinctSymbols, startUtc, endUtc, cacheMode);
-            List<DateTime> days = GetDays(startUtc, endUtc);
-            Dictionary<SymbolDay, TSource[]> served = new Dictionary<SymbolDay, TSource[]>();
-            HashSet<SymbolDay> pending = new HashSet<SymbolDay>(distinctSymbols.SelectMany(symbol => days.Select(day => new SymbolDay(symbol, day))));
-            if(cacheMode != CacheMode.Bypass)
-            {
-                await this.ReadCachedAsync(schema, dataset, pending, served, cancellationToken).ConfigureAwait(false);
-            }
-
-            if(cacheMode == CacheMode.CacheOnly && pending.Count > 0)
-            {
-                throw new NotCachedException(dataset, schema.Name, pending.Select(symbolDay => new KeyValuePair<string, DateTime>(symbolDay.Symbol, symbolDay.Day)));
-            }
-
+        /// <summary>
+        /// Downloads the pending symbol-days, each claimed so one request at a time downloads it; a day another request was downloading is
+        /// looked for in the cache once that request is done, and asked for again when it was not saved. With no <c>served</c>, no record is
+        /// kept once saved.
+        /// </summary>
+        /// <returns>The earliest available end a download was cut at, or <c>null</c> when none was cut</returns>
+        private async Task<DateTime?> DownloadPendingAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, HashSet<SymbolDay> pending, CacheMode cacheMode, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+            where TJson : class, TSource
+        {
+            DateTime? cutAtUtc = null;
             while(pending.Count > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -148,7 +207,8 @@ namespace Databento.CSharpApiClient.Caching.Client
                 {
                     if(claimed.Count > 0)
                     {
-                        await this.DownloadAsync(schema, dataset, claimed, cacheMode, served, cancellationToken).ConfigureAwait(false);
+                        DateTime? cut = await this.DownloadAsync(schema, dataset, claimed, cacheMode, served, cancellationToken).ConfigureAwait(false);
+                        cutAtUtc = cut < cutAtUtc || cutAtUtc == null ? cut : cutAtUtc;
                     }
                 }
                 finally
@@ -172,7 +232,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                 }
             }
 
-            return Assemble(schema, distinctSymbols, days, served, startUtc.UtcDateTime, endUtc.UtcDateTime);
+            return cutAtUtc;
         }
 
         /// <summary>
@@ -238,7 +298,8 @@ namespace Databento.CSharpApiClient.Caching.Client
         }
 
         /// <summary>
-        /// Reads the pending symbol-days the cache holds, listing each month folder once, and takes them out of the pending ones
+        /// Reads the pending symbol-days the cache holds, listing each month folder once, and takes them out of the pending ones; with no
+        /// <paramref name="served"/>, only finds them, by day file name and archive index, reading no record
         /// </summary>
         private async Task ReadCachedAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, HashSet<SymbolDay> pending, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
             where TSource : class, IRecord
@@ -251,6 +312,16 @@ namespace Databento.CSharpApiClient.Caching.Client
                 foreach(SymbolDay symbolDay in month)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if(served == null)
+                    {
+                        if(await this.store.ContainsAsync(schema, folder, symbolDay.Symbol, symbolDay.Day).ConfigureAwait(false))
+                        {
+                            pending.Remove(symbolDay);
+                        }
+
+                        continue;
+                    }
+
                     TSource[] records = await this.store.ReadAsync(schema, folder, symbolDay.Symbol, symbolDay.Day, cancellationToken).ConfigureAwait(false);
                     if(records != null)
                     {
@@ -262,13 +333,25 @@ namespace Databento.CSharpApiClient.Caching.Client
         }
 
         /// <summary>
+        /// Serves a symbol-day's records, unless none are kept
+        /// </summary>
+        private static void Serve<TSource>(Dictionary<SymbolDay, TSource[]> served, SymbolDay symbolDay, IEnumerable<TSource> records)
+        {
+            if(served != null)
+            {
+                served[symbolDay] = records as TSource[] ?? records.ToArray();
+            }
+        }
+
+        /// <summary>
         /// Downloads claimed symbol-days and serves them: symbols missing the same span of days go in one request per chunk of
         /// <see cref="CachedDatabentoClientOptions.MaxSymbolsPerRequest"/>, over that span's whole days, cut at the available end when one
         /// is known. By default it is known only after Databento refused a request past it: the end is then read and remembered, and the
         /// request cut and sent once more. The days a cut leaves out are served empty, or the refusal thrown once the other days are saved,
         /// as <see cref="CachedDatabentoClientOptions.AvailableEndRefusal"/> says.
         /// </summary>
-        private async Task DownloadAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, List<SymbolDay> claimed, CacheMode cacheMode, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
+        /// <returns>The earliest available end a chunk was cut at, or <c>null</c> when none was cut</returns>
+        private async Task<DateTime?> DownloadAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, List<SymbolDay> claimed, CacheMode cacheMode, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
             where TJson : class, TSource
@@ -279,6 +362,9 @@ namespace Databento.CSharpApiClient.Caching.Client
 
             // thrown once every chunk is served, with AvailableEndRefusal.Throw
             ExceptionDispatchInfo pastEnd = null;
+
+            // the earliest end a chunk was cut at, for the days past it
+            DateTime? cutAtUtc = null;
             foreach(IGrouping<DaySpan, string> span in daysBySymbol.Keys.GroupBy(symbol => new DaySpan(daysBySymbol[symbol].Min(), daysBySymbol[symbol].Max())))
             {
                 DayAvailability dayAvailability = checkFirst ? await this.availability.GetAsync(this.jsonClient, dataset, schema.Name, span.Key.First, span.Key.Last, cancellationToken).ConfigureAwait(false) : null;
@@ -325,9 +411,14 @@ namespace Databento.CSharpApiClient.Caching.Client
                         {
                             foreach(DateTime day in daysBySymbol[symbol])
                             {
-                                served[new SymbolDay(symbol, day)] = Array.Empty<TSource>();
+                                Serve(served, new SymbolDay(symbol, day), Array.Empty<TSource>());
                             }
                         }
+                    }
+
+                    if(endUtc < spanEndUtc && (cutAtUtc == null || endUtc < cutAtUtc))
+                    {
+                        cutAtUtc = endUtc;
                     }
 
                     if(checkFirst || endUtc >= spanEndUtc)
@@ -351,6 +442,7 @@ namespace Databento.CSharpApiClient.Caching.Client
             }
 
             pastEnd?.Throw();
+            return cutAtUtc;
         }
 
         /// <summary>
@@ -549,7 +641,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                     TSource[] cached = bypass && (final || records == null) ? await this.store.ReadAsync(schema, this.store.ListMonth(dataset, schema.Name, day), symbol, day, cancellationToken, logServed: false).ConfigureAwait(false) : null;
                     if(records != null)
                     {
-                        served[symbolDay] = records.ToArray();
+                        Serve(served, symbolDay, records);
                         if(!final)
                         {
                             this.LogNotFinal(symbol, day, schema.Name, finality);
@@ -571,18 +663,18 @@ namespace Databento.CSharpApiClient.Caching.Client
                         if(this.options.BypassMissAction == BypassMissAction.KeepCached || !final)
                         {
                             this.logger.BypassKeptCached(symbol, day, schema.Name);
-                            served[symbolDay] = cached;
+                            Serve(served, symbolDay, cached);
                         }
                         else
                         {
-                            served[symbolDay] = Array.Empty<TSource>();
+                            Serve(served, symbolDay, Array.Empty<TSource>());
                             guarded.Add(new GuardedSave<TJson>(symbolDay, new List<TJson>(), "a bypass answered no records, so it replaces the cached day", cached.Length));
                         }
 
                         continue;
                     }
 
-                    served[symbolDay] = Array.Empty<TSource>();
+                    Serve(served, symbolDay, Array.Empty<TSource>());
                     if(!final)
                     {
                         this.LogNotFinal(symbol, day, schema.Name, finality);
