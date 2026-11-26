@@ -27,27 +27,26 @@ namespace Databento.CSharpApiClient.Caching.Cache
         /// <exception cref="IOException">The file cannot be read</exception>
         public static async Task<TJson[]> ReadAsync<TJson>(string path, Func<Stream, CancellationToken, IAsyncEnumerable<TJson>> readRecords, CancellationToken cancellationToken)
         {
-            using(MemoryStream json = new MemoryStream())
+            FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 4096, useAsync: true);
+            await using(file.ConfigureAwait(false))
             {
-                FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 4096, useAsync: true);
-                await using(file.ConfigureAwait(false))
+                GZipStream gzip = new GZipStream(file, CompressionMode.Decompress);
+                await using(gzip.ConfigureAwait(false))
                 {
-                    GZipStream gzip = new GZipStream(file, CompressionMode.Decompress);
-                    await using(gzip.ConfigureAwait(false))
+                    // read one record a line as it is decompressed, never the whole day at once; only an array is a day, since read
+                    // as JSON lines nothing at all would be an empty day, final, and lines would be records
+                    JsonArrayLinesStream json = new JsonArrayLinesStream(gzip);
+                    await using(json.ConfigureAwait(false))
                     {
-                        await gzip.CopyToAsync(json, cancellationToken).ConfigureAwait(false);
+                        List<TJson> records = new List<TJson>();
+                        await foreach(TJson record in readRecords(json, cancellationToken).ConfigureAwait(false))
+                        {
+                            records.Add(record);
+                        }
+
+                        return records.ToArray();
                     }
                 }
-
-                // only an array is a day: read as JSON lines, nothing at all would be an empty day, final, and lines would be records
-                json.Position = FindArrayStart(json);
-                List<TJson> records = new List<TJson>();
-                await foreach(TJson record in readRecords(json, cancellationToken).ConfigureAwait(false))
-                {
-                    records.Add(record);
-                }
-
-                return records.ToArray();
             }
         }
 
@@ -94,30 +93,6 @@ namespace Databento.CSharpApiClient.Caching.Cache
             {
                 File.Delete(temporaryPath);
             }
-        }
-
-        /// <summary>
-        /// Finds the <c>[</c> a day file's JSON starts with, after any JSON whitespace
-        /// </summary>
-        /// <exception cref="InvalidDataException">The first byte that is no whitespace is not <c>[</c>, or there is none</exception>
-        private static long FindArrayStart(MemoryStream json)
-        {
-            byte[] bytes = json.GetBuffer();
-            for(int i = 0; i < json.Length; ++i)
-            {
-                byte character = bytes[i];
-                if(character == '[')
-                {
-                    return i;
-                }
-
-                if(character != ' ' && character != '\t' && character != '\r' && character != '\n')
-                {
-                    break;
-                }
-            }
-
-            throw new InvalidDataException("The day file holds no JSON array of records.");
         }
     }
 }

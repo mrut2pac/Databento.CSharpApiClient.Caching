@@ -17,6 +17,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 - Depends on `Microsoft.Extensions.Logging.Abstractions` 8.0.3, besides the client and Parquet.Net.
 
+### Fixed
+- A day file is read one record at a time as it is decompressed, instead of decompressing the whole day into memory and having the client read the JSON array as one document, which held the day several times over on the large object heap. A compaction of many groups at once (`MaxParallelGroups`) reached gigabytes, mostly LOH garbage and fragmentation: on invented cbbo-1s day files sized like an SPXW month, 12 groups at once peaked at a 4.4 GB GC heap (3.4 GB LOH) before and 0.8 GB (71 MB LOH) after. Reads served from day files gain the same. The client reads each record on its own line, which costs CPU: such a run took about 30% longer at the same `MaxParallelGroups`, which the lower memory lets a host raise. Files are read as before: a day file that is not one JSON array of records is still refused as unreadable.
+
 ## [1.3.0] - 2026-11-25
 
 ### Added
