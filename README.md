@@ -99,6 +99,8 @@ Each new file is written under a temporary name, checked against its sources (re
 
 The options also choose how empty days are kept, how new files are verified, and how old a day must be before it is archived. Optional `IArchiveDayCheck`s flag suspect days in the run's report.
 
+**Run the compactor with Server GC.** With several groups compacted at once (`MaxParallelGroups`) the compactor allocates fast, and the default Workstation GC stops every thread for each collection, so more groups can end up slower, not faster. Set `<ServerGarbageCollection>true</ServerGarbageCollection>` in the host's project file and check that its `.runtimeconfig.json` has `"System.GC.Server": true`; a misspelled property name is ignored without a warning. Compacting about 4 million day files with 16 groups at once, Server GC took the estimate from about 15 hours to 37 minutes and CPU use from about 20% to 64%, with memory staying under 2.5 GB.
+
 ## Backup and restore
 
 ```csharp
