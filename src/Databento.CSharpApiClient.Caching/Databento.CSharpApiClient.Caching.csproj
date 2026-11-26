@@ -20,7 +20,7 @@
     <!-- NuGet packaging -->
     <IsPackable>true</IsPackable>
     <PackageId>Databento.CSharpApiClient.Caching</PackageId>
-    <Version>1.4.1</Version>
+    <Version>1.5.0</Version>
     <Authors>Vardan Tovmasyan</Authors>
     <Description>A disk cache and Parquet archive for Databento.CSharpApiClient, so each day of Databento data is paid for once. The client's time-series calls served from per-symbol UTC day files, batch jobs for large ranges, a compactor that folds day files into Parquet any reader can query, and backup and restore of the whole cache.</Description>
     <PackageTags>databento;market-data;cache;parquet;trading;options;futures;historical</PackageTags>
@@ -30,6 +30,22 @@
     <RepositoryUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>
+v1.5.0 - 2026-11-27
+
+Added
+- SettleDelay (default 15 minutes, up to 24 hours): a downloaded day is saved only once its UTC day has ended plus
+  this delay, so a day Databento is still finalizing is not locked in.
+- AvailableEndRefusal (ServeEmpty by default, or Throw), AvailableEndRefreshInterval (default 15 minutes, on a UTC
+  grid) and CheckAvailabilityFirst (default false, the 1.4.1 metadata-first flow).
+- Empty days and Bypass replacements are saved only when Databento's condition for the day is available.
+
+Changed
+- A time-series download goes straight to Databento with no dataset range or conditions read before it. A request
+  refused past the available end is cut there and sent once more; the end is remembered and later requests are cut
+  before they are sent. Days past the end are served empty and not saved by default.
+- Depends on Databento.CSharpApiClient 2.8.0.
+- Compactor log lines: a line as listing starts, counts with thousands separators, dry run and delta folding worded.
+
 v1.4.1 - 2026-11-26
 
 Changed
