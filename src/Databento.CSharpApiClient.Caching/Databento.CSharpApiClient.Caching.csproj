@@ -20,7 +20,7 @@
     <!-- NuGet packaging -->
     <IsPackable>true</IsPackable>
     <PackageId>Databento.CSharpApiClient.Caching</PackageId>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <Authors>Vardan Tovmasyan</Authors>
     <Description>A disk cache and Parquet archive for Databento.CSharpApiClient, so each day of Databento data is paid for once. The client's time-series calls served from per-symbol UTC day files, batch jobs for large ranges, a compactor that folds day files into Parquet any reader can query, and backup and restore of the whole cache.</Description>
     <PackageTags>databento;market-data;cache;parquet;trading;options;futures;historical</PackageTags>
@@ -30,6 +30,27 @@
     <RepositoryUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>
+v1.4.0 - 2026-11-26
+
+Added
+- Diagnostic logging through Microsoft.Extensions.Logging: a Logger (ILogger, default NullLogger.Instance) on
+  CachedDatabentoClientOptions, ArchiveCompactorOptions, CacheBackupOptions and CacheRestoreOptions. Information:
+  each download from Databento and what it brought back, batch jobs, and the steps of a compaction, backup and
+  restore. Debug: each symbol-day served from its day file or the archive or not cached, and each save or why a
+  day was not saved. Warning and Error: failures, refusals, unreadable files. Nothing is formatted below the
+  logger's level, and the message text is culture-invariant. A logger's methods shall not throw; the package
+  drops anything they throw, so a failing logger never changes what the cache serves or writes.
+
+Changed
+- Depends on Microsoft.Extensions.Logging.Abstractions 8.0.3.
+- Built on Databento.CSharpApiClient 2.7.2, which reads a JSON array one record at a time as it arrives.
+
+Fixed
+- A day file is handed to the client as it is decompressed, and its records parsed one at a time, instead of the
+  whole day held several times over on the large object heap. A compaction of many groups at once reached
+  gigabytes: on invented cbbo-1s days sized like an SPXW month, 12 groups at once peaked at a 4.4 GB GC heap
+  (3.4 GB LOH) before and under 1 GB (69 MB LOH) after, allocating 102 GB instead of 342 GB.
+
 v1.3.0 - 2026-11-25
 
 Added
