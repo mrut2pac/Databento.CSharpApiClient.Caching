@@ -4,7 +4,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -296,6 +299,62 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Cache
         }
 
         [TestMethod]
+        public async Task Read_DayFile_HandsTheReaderTheArrayAsItIsDecompressed()
+        {
+            // handed over as it is decompressed, from the array's start on, rather than as the whole day decompressed into memory
+            string path = Path.Combine(this.directory, "day.json.gz");
+            CbboRecordJson[] records = { Cbbo(4.05), Cbbo(4.10), Cbbo(4.15) };
+            WriteGzip(path, " \r\n" + JsonSerializer.Serialize(records));
+            List<string> seen = new List<string>();
+
+            CbboRecordJson[] read = await DayFile.ReadAsync(path, (stream, cancellationToken) => NoteStreamThenReadRecords(stream, seen, cancellationToken), CancellationToken.None);
+
+            Assert.AreEqual(3, read.Length);
+            Assert.AreEqual(4.15, read[2].Price);
+            CollectionAssert.AreEqual(new[] { "forward only", "starts with [" }, seen);
+        }
+
+        [TestMethod]
+        public async Task Read_ArrayWrittenByHand_IsReadAsWritten()
+        {
+            // indented over many lines, with strings holding brackets, commas, quotes, a backslash and a newline, as the serializer escapes them
+            const string odd = "SPXW  ],{\"x\\\"}\n[";
+            CbboRecordJson first = Cbbo(4.05);
+            first.Symbol = odd;
+            CbboRecordJson second = Cbbo(4.10);
+            second.Symbol = "QQQ";
+            string path = Path.Combine(this.directory, "day.json.gz");
+            WriteGzip(path, "\r\n  " + JsonSerializer.Serialize(new[] { first, second }, new JsonSerializerOptions { WriteIndented = true }).Replace("\n", "\r\n") + " \r\n");
+
+            CbboRecordJson[] read = await DayFile.ReadAsync(path, JsonRecordReader.ReadCbboAsync, CancellationToken.None);
+
+            Assert.AreEqual(2, read.Length);
+            Assert.AreEqual(odd, read[0].Symbol);
+            Assert.AreEqual(4.05, read[0].Price);
+            Assert.AreEqual("QQQ", read[1].Symbol);
+            Assert.AreEqual(4.10, read[1].Price);
+        }
+
+        [TestMethod]
+        [DataRow("[", DisplayName = "an array not closed")]
+        [DataRow("[{record}", DisplayName = "a record and no end")]
+        [DataRow("[{record}] x", DisplayName = "text after the array")]
+        [DataRow("[{record}][]", DisplayName = "a second array")]
+        [DataRow("[,]", DisplayName = "a comma alone")]
+        [DataRow("[{record},]", DisplayName = "a trailing comma")]
+        [DataRow("[{record},,{record}]", DisplayName = "two commas")]
+        [DataRow("[[{record}]]", DisplayName = "an array of arrays")]
+        [DataRow("[null]", DisplayName = "a null")]
+        [DataRow("[{record}{record}]", DisplayName = "records without a comma")]
+        public async Task Read_ArrayThatIsNotOneOfRecords_Throws(string json)
+        {
+            string path = Path.Combine(this.directory, "day.json.gz");
+            WriteGzip(path, json.Replace("{record}", JsonSerializer.Serialize(Cbbo(4.05))));
+
+            await Assert.ThrowsExceptionAsync<InvalidDataException>(() => DayFile.ReadAsync(path, JsonRecordReader.ReadCbboAsync, CancellationToken.None));
+        }
+
+        [TestMethod]
         public async Task Read_RecordsOfAnotherSchema_Throws()
         {
             // a TCBBO day file read as CBBO: the record type tells them apart
@@ -332,6 +391,28 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Cache
                 TsReceivedUtc = TsEvent,
                 Levels = new[] { new CbboLevel1RecordJson { BidPrice = price, AskPrice = price + 0.05 } },
             };
+        }
+
+        /// <summary>
+        /// Notes whether the stream a day file hands its reader can seek and where it starts, then reads it as CBBO records
+        /// </summary>
+        private static async IAsyncEnumerable<CbboRecordJson> NoteStreamThenReadRecords(Stream stream, List<string> seen, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            seen.Add(stream.CanSeek ? "seekable" : "forward only");
+            byte[] first = new byte[1];
+            int read = await stream.ReadAsync(first, cancellationToken);
+            seen.Add(read == 1 && first[0] == '[' ? "starts with [" : "starts elsewhere");
+
+            using(MemoryStream rest = new MemoryStream())
+            {
+                rest.Write(first, 0, read);
+                await stream.CopyToAsync(rest, cancellationToken);
+                rest.Position = 0;
+                await foreach(CbboRecordJson record in JsonRecordReader.ReadCbboAsync(rest, cancellationToken))
+                {
+                    yield return record;
+                }
+            }
         }
 
         private static string ReadText(string path)
