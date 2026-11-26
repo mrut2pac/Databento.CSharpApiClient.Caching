@@ -630,9 +630,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 Assert.ThrowsException<ArgumentException>(() => fixture.CreateClient(options => options.EmptyDays = (EmptyDayPolicy)7));
                 Assert.ThrowsException<ArgumentException>(() => fixture.CreateClient(options => options.TimeProvider = null));
                 ArgumentException negative = Assert.ThrowsException<ArgumentException>(() => fixture.CreateClient(options => options.SettleDelay = TimeSpan.FromTicks(-1)));
-                ArgumentException overAnHour = Assert.ThrowsException<ArgumentException>(() => fixture.CreateClient(options => options.SettleDelay = TimeSpan.FromHours(1).Add(TimeSpan.FromTicks(1))));
-                StringAssert.Contains(negative.Message, "SettleDelay -00:00:00.0000001 must be 00:00:00 to 01:00:00, inclusive.");
-                StringAssert.Contains(overAnHour.Message, "SettleDelay 01:00:00.0000001 must be 00:00:00 to 01:00:00, inclusive.");
+                ArgumentException overADay = Assert.ThrowsException<ArgumentException>(() => fixture.CreateClient(options => options.SettleDelay = TimeSpan.FromDays(1).Add(TimeSpan.FromTicks(1))));
+                StringAssert.Contains(negative.Message, "SettleDelay -00:00:00.0000001 must be 00:00:00 to 1.00:00:00, inclusive.");
+                StringAssert.Contains(overADay.Message, "SettleDelay 1.00:00:00.0000001 must be 00:00:00 to 1.00:00:00, inclusive.");
             }
         }
 
@@ -642,7 +642,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             {
                 fixture.CreateClient(options => options.SettleDelay = TimeSpan.Zero).Dispose();
-                fixture.CreateClient(options => options.SettleDelay = TimeSpan.FromHours(1)).Dispose();
+                fixture.CreateClient(options => options.SettleDelay = TimeSpan.FromDays(1)).Dispose();
             }
         }
 

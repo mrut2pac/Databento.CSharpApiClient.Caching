@@ -23,7 +23,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <summary>
         /// The longest <see cref="SettleDelay"/> taken
         /// </summary>
-        internal static readonly TimeSpan MaxSettleDelay = TimeSpan.FromHours(1);
+        internal static readonly TimeSpan MaxSettleDelay = TimeSpan.FromDays(1);
 
         /// <summary>
         /// The default <see cref="AvailableEndRefreshInterval"/>
@@ -66,7 +66,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <summary>
         /// Gets or sets how long after its UTC day ends a downloaded day is first saved; a newer day is served and not saved. Databento may
         /// still be finalizing a day just after midnight, so a license that serves it then could otherwise lock in incomplete data. Zero to
-        /// one hour, inclusive; default 15 minutes.
+        /// 24 hours, inclusive; default 15 minutes.
         /// </summary>
         public TimeSpan SettleDelay { get; set; } = DefaultSettleDelay;
 
