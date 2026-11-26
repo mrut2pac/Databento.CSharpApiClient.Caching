@@ -12,8 +12,9 @@ namespace Databento.CSharpApiClient.Caching
         Use = 0,
 
         /// <summary>
-        /// Every symbol-day downloaded again, the day file and the archive both skipped, and the day file replaced. Each such symbol-day is
-        /// a paid request; an empty answer for a cached day follows <see cref="CachedDatabentoClientOptions.BypassMissAction"/>.
+        /// Every symbol-day downloaded again and served as downloaded, the day file and the archive both skipped; each is a paid request. A
+        /// cached settled day is replaced only when Databento's condition for it is <c>available</c>, whatever the record counts, else the
+        /// cached file is kept. An empty answer for a cached day follows <see cref="CachedDatabentoClientOptions.BypassMissAction"/>.
         /// </summary>
         Bypass = 1,
 

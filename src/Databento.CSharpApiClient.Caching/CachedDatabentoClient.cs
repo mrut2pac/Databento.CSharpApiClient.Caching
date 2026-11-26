@@ -12,10 +12,12 @@ namespace Databento.CSharpApiClient.Caching
 {
     /// <summary>
     /// The Databento client's time-series calls, served from a disk cache: each UTC day a range touches, per symbol, from its day file, else
-    /// from the archive the compactor builds, else downloaded whole and saved as a day file before the call returns, once Databento says the
-    /// day is final. So each symbol-day is paid for once. The calls take the client's arguments plus a <see cref="CacheMode"/>, and return
-    /// the record interfaces, in time order, trimmed to the range. Databento's metadata and symbology calls are passed through uncached, so
-    /// one client serves all of them.
+    /// from the archive the compactor builds, else downloaded whole and saved as a day file before the call returns, once its UTC day has
+    /// ended plus <see cref="CachedDatabentoClientOptions.SettleDelay"/>, so each symbol-day is paid for once. A download goes straight to
+    /// Databento with no metadata call before it, and one refused as past the available end is cut at that end and sent once more
+    /// (<see cref="CachedDatabentoClientOptions.CheckAvailabilityFirst"/> reads the dataset's range and conditions first instead). The calls
+    /// take the client's arguments plus a <see cref="CacheMode"/> and return the record interfaces in time order, trimmed to the range;
+    /// Databento's metadata and symbology calls are passed through uncached, so one client serves all of them.
     /// </summary>
     /// <remarks>
     /// Thread-safe: concurrent calls share the cache, and one download per symbol-day runs at a time within the process, across clients on
@@ -103,9 +105,9 @@ namespace Databento.CSharpApiClient.Caching
                 throw new ArgumentException("A cache root is needed.", nameof(options));
             }
 
-            if(!Enum.IsDefined(options.Transport) || !Enum.IsDefined(options.EmptyDays) || !Enum.IsDefined(options.BypassMissAction))
+            if(!Enum.IsDefined(options.Transport) || !Enum.IsDefined(options.EmptyDays) || !Enum.IsDefined(options.BypassMissAction) || !Enum.IsDefined(options.AvailableEndRefusal))
             {
-                throw new ArgumentException(Invariant($"Transport {options.Transport}, EmptyDays {options.EmptyDays} and BypassMissAction {options.BypassMissAction} must each be one of their values."), nameof(options));
+                throw new ArgumentException(Invariant($"Transport {options.Transport}, EmptyDays {options.EmptyDays}, BypassMissAction {options.BypassMissAction} and AvailableEndRefusal {options.AvailableEndRefusal} must each be one of their values."), nameof(options));
             }
 
             if(options.MaxSymbolsPerRequest < 1 || options.MaxSymbolsPerRequest > CachedDatabentoClientOptions.MaxSymbolsDatabentoTakes)
@@ -123,6 +125,22 @@ namespace Databento.CSharpApiClient.Caching
                 throw new ArgumentException("A TimeProvider is needed.", nameof(options));
             }
 
+            if(options.SettleDelay < TimeSpan.Zero || options.SettleDelay > CachedDatabentoClientOptions.MaxSettleDelay)
+            {
+                throw new ArgumentException(Invariant($"SettleDelay {options.SettleDelay} must be {TimeSpan.Zero} to {CachedDatabentoClientOptions.MaxSettleDelay}, inclusive."), nameof(options));
+            }
+
+            if(options.AvailableEndRefreshInterval <= TimeSpan.Zero)
+            {
+                throw new ArgumentException(Invariant($"AvailableEndRefreshInterval {options.AvailableEndRefreshInterval} must be above zero."), nameof(options));
+            }
+
+            if(TimeSpan.TicksPerDay % options.AvailableEndRefreshInterval.Ticks != 0)
+            {
+                // the refresh grid starts at each UTC midnight, so an interval that does not divide a day would shift it from day to day
+                throw new ArgumentException(Invariant($"AvailableEndRefreshInterval {options.AvailableEndRefreshInterval} must divide a day evenly."), nameof(options));
+            }
+
             return new CachedDatabentoClientOptions
             {
                 Databento = options.Databento,
@@ -131,6 +149,10 @@ namespace Databento.CSharpApiClient.Caching
                 EmptyDays = options.EmptyDays,
                 BypassMissAction = options.BypassMissAction,
                 MaxSymbolsPerRequest = options.MaxSymbolsPerRequest,
+                SettleDelay = options.SettleDelay,
+                CheckAvailabilityFirst = options.CheckAvailabilityFirst,
+                AvailableEndRefreshInterval = options.AvailableEndRefreshInterval,
+                AvailableEndRefusal = options.AvailableEndRefusal,
                 BatchPollInterval = options.BatchPollInterval,
                 BatchDownloadFolder = options.BatchDownloadFolder,
                 TimeProvider = options.TimeProvider,

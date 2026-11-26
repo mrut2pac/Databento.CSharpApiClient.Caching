@@ -283,6 +283,7 @@ namespace Databento.CSharpApiClient.Caching
         private async Task RunAsync(string cutoff, ArchiveCompactionReport report, CancellationToken cancellationToken)
         {
             CompactionRun run = new CompactionRun(this.options, cutoff, report, this.TemporaryFileWritten, this.DeleteFile);
+            this.options.Logger.CompactionPlanning(this.options.CacheRoot);
             List<MonthFolder> monthFolders = this.EnumerateMonthFolders(report).ToList();
             CompactionProgress progress = this.PlanRun(monthFolders, run);
             long startTimestamp = this.options.TimeProvider.GetTimestamp();

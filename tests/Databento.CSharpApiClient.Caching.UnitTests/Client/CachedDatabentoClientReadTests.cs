@@ -296,11 +296,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 string archive = fixture.Cache.WriteCbboFile(new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), 0, new ArchiveSymbolDay<ICbboRecord>(Call, Day, new ICbboRecord[] { Cbbo(Call, Day, 1) }));
                 File.WriteAllBytes(archive, new byte[] { 1, 2, 3 });
                 fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 2));
-                fixture.Databento.Conditions[Day] = "pending";
+                fixture.Clock.SetUtcNow(Day.AddHours(12));
                 List<ArchiveFileUnreadableEventArgs> raised = new List<ArchiveFileUnreadableEventArgs>();
                 client.ArchiveFileUnreadable += (sender, args) => raised.Add(args);
 
-                // a pending day is not saved, so each call reads the archive again: the second past the 10 minutes, the file read again
+                // today's day is not saved, so each call reads the archive again: the second past the 10 minutes, the file read again
                 ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
                 fixture.Clock.Advance(TimeSpan.FromMinutes(11));
                 await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);

@@ -11,8 +11,9 @@ namespace Databento.CSharpApiClient.Caching
         KeepCached = 0,
 
         /// <summary>
-        /// The cached day is replaced with an empty one once the day is final, whatever <see cref="EmptyDayPolicy"/> says, and nothing is
-        /// served for it.
+        /// Nothing is served for the day, and the cached day is replaced with an empty one once it is settled, whatever
+        /// <see cref="EmptyDayPolicy"/> says, but only when Databento's condition for it is <c>available</c>. So an outage's empty answer
+        /// never replaces a cached day.
         /// </summary>
         Replace = 1,
     }

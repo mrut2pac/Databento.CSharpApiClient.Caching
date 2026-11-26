@@ -71,8 +71,8 @@ namespace Databento.CSharpApiClient.Caching.Logging
         [LoggerMessage(EventId = 1015, Level = LogLevel.Debug, Message = "Kept the day file {Path} already there; the {RecordCount} records of {Symbol} {Day:yyyy-MM-dd} {Schema} are not saved over it")]
         public static partial void DayFileKept(this ILogger logger, string path, int recordCount, string symbol, DateTime day, string schema);
 
-        [LoggerMessage(EventId = 1016, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} is served but not saved: the day is not final (the available end is {AvailableEndUtc:yyyy-MM-ddTHH:mm:ssZ})")]
-        public static partial void NotFinal(this ILogger logger, string symbol, DateTime day, string schema, DateTime availableEndUtc);
+        [LoggerMessage(EventId = 1016, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} is served but not saved: the day is not final ({Reason})")]
+        public static partial void NotFinal(this ILogger logger, string symbol, DateTime day, string schema, string reason);
 
         [LoggerMessage(EventId = 1017, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} answered no records and is saved as empty as {Path}: {Reason}")]
         public static partial void EmptyDaySaved(this ILogger logger, string symbol, DateTime day, string schema, string path, string reason);
@@ -94,6 +94,24 @@ namespace Databento.CSharpApiClient.Caching.Logging
 
         [LoggerMessage(EventId = 1024, Level = LogLevel.Warning, Message = "Downloading {Schema} of {Dataset} for {Symbols} from Databento failed after {Elapsed}")]
         private static partial void DownloadFailed(ILogger logger, string schema, string dataset, string symbols, TimeSpan elapsed, Exception exception);
+
+        [LoggerMessage(EventId = 1025, Level = LogLevel.Debug, Message = "Read the available end of {Schema} of {Dataset}, {AvailableEndUtc:yyyy-MM-ddTHH:mm:ssZ}: requests are cut at it until it is read again from {RefreshUtc:yyyy-MM-ddTHH:mm:ssZ}")]
+        public static partial void AvailableEndRemembered(this ILogger logger, string schema, string dataset, DateTime availableEndUtc, DateTime refreshUtc);
+
+        [LoggerMessage(EventId = 1026, Level = LogLevel.Warning, Message = "Reading the available end of {Schema} of {Dataset} from Databento's dataset range failed, so Databento's refusal past it propagates")]
+        public static partial void AvailableEndReadFailed(this ILogger logger, string schema, string dataset, Exception exception);
+
+        [LoggerMessage(EventId = 1027, Level = LogLevel.Information, Message = "A bypass replaced the cached {Symbol} {Day:yyyy-MM-dd} {Schema}: cached {CachedCount} records, now {RecordCount}")]
+        public static partial void BypassReplaced(this ILogger logger, string symbol, DateTime day, string schema, int cachedCount, int recordCount);
+
+        [LoggerMessage(EventId = 1028, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} is served as downloaded on a bypass and the cached day is kept: {Reason}")]
+        public static partial void BypassNotReplaced(this ILogger logger, string symbol, DateTime day, string schema, string reason);
+
+        [LoggerMessage(EventId = 1029, Level = LogLevel.Warning, Message = "Reading Databento's conditions for {Count} symbol-day(s) of {Schema} of {Dataset} failed, so they are served and none is saved or replaced")]
+        public static partial void ConditionsReadFailed(this ILogger logger, int count, string schema, string dataset, Exception exception);
+
+        [LoggerMessage(EventId = 1030, Level = LogLevel.Information, Message = "{Count} settled symbol-day(s) of {Schema} of {Dataset}, UTC days {FirstDay:yyyy-MM-dd} to {LastDay:yyyy-MM-dd}, are served only up to the available end {AvailableEndUtc:yyyy-MM-ddTHH:mm:ssZ} and not saved")]
+        public static partial void SettledDaysPastAvailableEnd(this ILogger logger, int count, string schema, string dataset, DateTime firstDay, DateTime lastDay, DateTime availableEndUtc);
 
         // batch jobs
 
@@ -132,16 +150,16 @@ namespace Databento.CSharpApiClient.Caching.Logging
 
         // the compactor
 
-        [LoggerMessage(EventId = 3001, Level = LogLevel.Information, Message = "Compacting {CacheRoot}: mode {CompactionMode}, dry run {DryRun}, {Groups} group(s) with {DayFiles} day file(s) planned ...")]
-        public static partial void CompactionStarted(this ILogger logger, string cacheRoot, CompactionMode compactionMode, bool dryRun, int groups, long dayFiles);
+        [LoggerMessage(EventId = 3001, Level = LogLevel.Information, Message = "Compacting {CacheRoot} in {CompactionMode} mode{DryRun}: {Groups:N0} group(s) with {DayFiles:N0} day file(s) planned ...")]
+        private static partial void CompactionStarted(ILogger logger, string cacheRoot, CompactionMode compactionMode, string dryRun, int groups, long dayFiles);
 
-        [LoggerMessage(EventId = 3002, Level = LogLevel.Information, Message = "Compaction of {CacheRoot} done: {GroupsCompacted} group(s) compacted, {FailedGroups} failed, {DayFilesAbsorbed} day file(s) absorbed, {DayFilesDeleted} deleted, {FilesLeft} file(s) left for the next run")]
+        [LoggerMessage(EventId = 3002, Level = LogLevel.Information, Message = "Compaction of {CacheRoot} done: {GroupsCompacted:N0} group(s) compacted, {FailedGroups:N0} failed, {DayFilesAbsorbed:N0} day file(s) absorbed, {DayFilesDeleted:N0} deleted, {FilesLeft:N0} file(s) left for the next run")]
         public static partial void CompactionFinished(this ILogger logger, string cacheRoot, int groupsCompacted, int failedGroups, long dayFilesAbsorbed, long dayFilesDeleted, int filesLeft);
 
-        [LoggerMessage(EventId = 3003, Level = LogLevel.Information, Message = "Compaction of {CacheRoot} canceled after {GroupsCompacted} group(s) compacted")]
+        [LoggerMessage(EventId = 3003, Level = LogLevel.Information, Message = "Compaction of {CacheRoot} canceled after {GroupsCompacted:N0} group(s) compacted")]
         public static partial void CompactionCanceled(this ILogger logger, string cacheRoot, int groupsCompacted);
 
-        [LoggerMessage(EventId = 3004, Level = LogLevel.Debug, Message = "Compacting {Directory} {Group}: {DayFiles} day file(s) ...")]
+        [LoggerMessage(EventId = 3004, Level = LogLevel.Debug, Message = "Compacting {Directory} {Group}: {DayFiles:N0} day file(s) ...")]
         public static partial void GroupStarted(this ILogger logger, string directory, string group, int dayFiles);
 
         [LoggerMessage(EventId = 3005, Level = LogLevel.Debug, Message = "Wrote {Path}; {Checking}")]
@@ -150,8 +168,8 @@ namespace Databento.CSharpApiClient.Caching.Logging
         [LoggerMessage(EventId = 3006, Level = LogLevel.Debug, Message = "Verified {Path}, {Verification}")]
         public static partial void ArchiveFileVerified(this ILogger logger, string path, ArchiveVerification verification);
 
-        [LoggerMessage(EventId = 3007, Level = LogLevel.Debug, Message = "Published {Path}: {SymbolDays} symbol-day(s), {DayFilesAbsorbed} day file(s) absorbed, delta folded {DeltaFolded}")]
-        public static partial void ArchiveFilePublished(this ILogger logger, string path, int symbolDays, int dayFilesAbsorbed, bool deltaFolded);
+        [LoggerMessage(EventId = 3007, Level = LogLevel.Debug, Message = "Published {Path}: {SymbolDays:N0} symbol-day(s), {DayFilesAbsorbed:N0} day file(s) absorbed{DeltaFolded}")]
+        private static partial void ArchiveFilePublished(ILogger logger, string path, int symbolDays, int dayFilesAbsorbed, string deltaFolded);
 
         [LoggerMessage(EventId = 3008, Level = LogLevel.Debug, Message = "Could not delete {Path} (attempt {Attempt} of {Attempts}), trying again in {Delay}: {Error}")]
         public static partial void DeleteRetried(this ILogger logger, string path, int attempt, int attempts, TimeSpan delay, string error);
@@ -185,6 +203,9 @@ namespace Databento.CSharpApiClient.Caching.Logging
 
         [LoggerMessage(EventId = 3019, Level = LogLevel.Error, Message = "Compacting {CacheRoot} failed; the groups not yet compacted are left as they were")]
         public static partial void CompactionFailed(this ILogger logger, string cacheRoot, Exception exception);
+
+        [LoggerMessage(EventId = 3020, Level = LogLevel.Information, Message = "Listing {CacheRoot} to plan the compaction ...")]
+        public static partial void CompactionPlanning(this ILogger logger, string cacheRoot);
 
         // the backup
 
@@ -308,6 +329,28 @@ namespace Databento.CSharpApiClient.Caching.Logging
                     ArchiveVerification.CountsOnly => "checking its index and symbol-days against its sources",
                     _ => "not checked: Verification is None",
                 });
+            }
+        }
+
+        /// <summary>
+        /// Logs the start of a compaction, once its groups are counted
+        /// </summary>
+        public static void CompactionStarted(this ILogger logger, string cacheRoot, CompactionMode compactionMode, bool dryRun, int groups, long dayFiles)
+        {
+            if(logger.IsEnabled(LogLevel.Information))
+            {
+                CompactionStarted(logger, cacheRoot, compactionMode, dryRun ? ", as a dry run" : string.Empty, groups, dayFiles);
+            }
+        }
+
+        /// <summary>
+        /// Logs an archive file published, and whether the month's delta was folded into it
+        /// </summary>
+        public static void ArchiveFilePublished(this ILogger logger, string path, int symbolDays, int dayFilesAbsorbed, bool deltaFolded)
+        {
+            if(logger.IsEnabled(LogLevel.Debug))
+            {
+                ArchiveFilePublished(logger, path, symbolDays, dayFilesAbsorbed, deltaFolded ? ", the delta folded in" : string.Empty);
             }
         }
 

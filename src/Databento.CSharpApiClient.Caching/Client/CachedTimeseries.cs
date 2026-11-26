@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,7 +21,10 @@ namespace Databento.CSharpApiClient.Caching.Client
 {
     /// <summary>
     /// Serves a time-series request from the cache: each UTC day the range touches, per symbol, from its day file, else the archive, else
-    /// downloaded whole, split by symbol and day, saved once final, and trimmed to the range when served.
+    /// downloaded whole, split by symbol and day, saved once settled (its UTC day ended plus
+    /// <see cref="CachedDatabentoClientOptions.SettleDelay"/>), and trimmed to the range when served. An empty day, or a bypass replacing a
+    /// cached day, is saved only when Databento's condition for it is <c>available</c>, and days past the available end are served empty
+    /// by default (<see cref="CachedDatabentoClientOptions.AvailableEndRefusal"/>).
     /// </summary>
     internal sealed class CachedTimeseries
     {
@@ -37,6 +42,12 @@ namespace Databento.CSharpApiClient.Caching.Client
         private readonly SymbolDayStore store;
 
         private readonly DatasetAvailability availability;
+
+        /// <summary>
+        /// The available ends read after Databento refused a download as past them, and when each is to be read again: until then later
+        /// requests are cut at it before they are sent. Used only without <see cref="CachedDatabentoClientOptions.CheckAvailabilityFirst"/>.
+        /// </summary>
+        private readonly ConcurrentDictionary<(string Dataset, string Schema), (DateTime End, DateTimeOffset RefreshUtc)> availableEnds = new ConcurrentDictionary<(string Dataset, string Schema), (DateTime End, DateTimeOffset RefreshUtc)>();
 
         private readonly ILogger logger;
 
@@ -252,7 +263,10 @@ namespace Databento.CSharpApiClient.Caching.Client
 
         /// <summary>
         /// Downloads claimed symbol-days and serves them: symbols missing the same span of days go in one request per chunk of
-        /// <see cref="CachedDatabentoClientOptions.MaxSymbolsPerRequest"/>, over that span's whole days
+        /// <see cref="CachedDatabentoClientOptions.MaxSymbolsPerRequest"/>, over that span's whole days, cut at the available end when one
+        /// is known. By default it is known only after Databento refused a request past it: the end is then read and remembered, and the
+        /// request cut and sent once more. The days a cut leaves out are served empty, or the refusal thrown once the other days are saved,
+        /// as <see cref="CachedDatabentoClientOptions.AvailableEndRefusal"/> says.
         /// </summary>
         private async Task DownloadAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, List<SymbolDay> claimed, CacheMode cacheMode, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
             where TSource : class, IRecord
@@ -260,22 +274,53 @@ namespace Databento.CSharpApiClient.Caching.Client
             where TJson : class, TSource
         {
             Dictionary<string, HashSet<DateTime>> daysBySymbol = claimed.GroupBy(symbolDay => symbolDay.Symbol, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Select(symbolDay => symbolDay.Day).ToHashSet(), StringComparer.Ordinal);
+            DateTimeOffset nowUtc = this.options.TimeProvider.GetUtcNow();
+            bool checkFirst = this.options.CheckAvailabilityFirst;
+
+            // thrown once every chunk is served, with AvailableEndRefusal.Throw
+            ExceptionDispatchInfo pastEnd = null;
             foreach(IGrouping<DaySpan, string> span in daysBySymbol.Keys.GroupBy(symbol => new DaySpan(daysBySymbol[symbol].Min(), daysBySymbol[symbol].Max())))
             {
-                DayAvailability dayAvailability = await this.availability.GetAsync(this.jsonClient, dataset, schema.Name, span.Key.First, span.Key.Last, cancellationToken).ConfigureAwait(false);
+                DayAvailability dayAvailability = checkFirst ? await this.availability.GetAsync(this.jsonClient, dataset, schema.Name, span.Key.First, span.Key.Last, cancellationToken).ConfigureAwait(false) : null;
                 DateTime startUtc = span.Key.First;
-                DateTime endUtc = span.Key.Last.AddDays(1);
-                if(dayAvailability.AvailableEndUtc < endUtc)
-                {
-                    endUtc = dayAvailability.AvailableEndUtc;
-                }
-
+                DateTime spanEndUtc = span.Key.Last.AddDays(1);
                 foreach(string[] chunk in span.Chunk(this.options.MaxSymbolsPerRequest))
                 {
-                    if(endUtc <= startUtc)
+                    DateTime endUtc = this.CutAtAvailableEnd(schema.Name, dataset, spanEndUtc, dayAvailability, nowUtc);
+                    ChunkAnswer<TJson> answer = null;
+                    DatabentoHttpException refusal = null;
+                    if(endUtc > startUtc)
+                    {
+                        try
+                        {
+                            answer = await this.DownloadChunkAsync(schema, dataset, chunk, startUtc, endUtc, !checkFirst, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch(DatabentoHttpException ex) when(!checkFirst && IsPastAvailableEnd(ex))
+                        {
+                            DateTime? availableEndUtc = await this.ReadAvailableEndAsync(schema.Name, dataset, cancellationToken).ConfigureAwait(false);
+                            if(availableEndUtc == null)
+                            {
+                                throw;
+                            }
+
+                            // cut at the end just read and sent once more: a second refusal propagates
+                            refusal = ex;
+                            endUtc = availableEndUtc < endUtc ? availableEndUtc.Value : endUtc;
+                            if(endUtc > startUtc)
+                            {
+                                answer = await this.DownloadChunkAsync(schema, dataset, chunk, startUtc, endUtc, false, cancellationToken).ConfigureAwait(false);
+                            }
+                        }
+                    }
+
+                    if(answer != null)
+                    {
+                        await this.ServeChunkAsync(schema, dataset, chunk, daysBySymbol, answer, new DayFinality(nowUtc, this.options.SettleDelay, endUtc, dayAvailability), cacheMode, served, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
                     {
                         // nothing of the span is available yet: served empty, saved never
-                        this.logger.NotAvailableYet(schema.Name, dataset, chunk, startUtc, dayAvailability.AvailableEndUtc);
+                        this.logger.NotAvailableYet(schema.Name, dataset, chunk, startUtc, endUtc);
                         foreach(string symbol in chunk)
                         {
                             foreach(DateTime day in daysBySymbol[symbol])
@@ -283,22 +328,116 @@ namespace Databento.CSharpApiClient.Caching.Client
                                 served[new SymbolDay(symbol, day)] = Array.Empty<TSource>();
                             }
                         }
+                    }
 
+                    if(checkFirst || endUtc >= spanEndUtc)
+                    {
                         continue;
                     }
 
-                    ChunkAnswer<TJson> answer = await this.DownloadChunkAsync(schema, dataset, chunk, startUtc, endUtc, cancellationToken).ConfigureAwait(false);
-                    await this.ServeChunkAsync(schema, dataset, chunk, daysBySymbol, answer, dayAvailability, cacheMode, served, cancellationToken).ConfigureAwait(false);
+                    if(this.options.AvailableEndRefusal == AvailableEndRefusal.Throw)
+                    {
+                        pastEnd ??= ExceptionDispatchInfo.Capture(refusal ?? CreatePastEndRefusal(schema.Name, dataset, startUtc, spanEndUtc, endUtc));
+                        continue;
+                    }
+
+                    // a settled day served short is one a backtest expected data for, so it is told of above Debug
+                    List<DateTime> settledPastEnd = chunk.SelectMany(symbol => daysBySymbol[symbol]).Where(day => GetDayEnd(day) > endUtc && IsSettled(day, nowUtc, this.options.SettleDelay)).ToList();
+                    if(settledPastEnd.Count > 0)
+                    {
+                        this.logger.SettledDaysPastAvailableEnd(settledPastEnd.Count, schema.Name, dataset, settledPastEnd.Min(), settledPastEnd.Max(), endUtc);
+                    }
                 }
             }
+
+            pastEnd?.Throw();
+        }
+
+        /// <summary>
+        /// Gets the end a request over whole days is sent with: cut at the available end the check found, or else at the one remembered for
+        /// the schema while it is not due on the <see cref="CachedDatabentoClientOptions.AvailableEndRefreshInterval"/> grid
+        /// </summary>
+        private DateTime CutAtAvailableEnd(string schema, string dataset, DateTime spanEndUtc, DayAvailability dayAvailability, DateTimeOffset nowUtc)
+        {
+            DateTime? availableEndUtc = dayAvailability?.AvailableEndUtc;
+            if(dayAvailability == null && this.availableEnds.TryGetValue((dataset, schema), out (DateTime End, DateTimeOffset RefreshUtc) remembered) && nowUtc < remembered.RefreshUtc)
+            {
+                availableEndUtc = remembered.End;
+            }
+
+            return availableEndUtc < spanEndUtc ? availableEndUtc.Value : spanEndUtc;
+        }
+
+        /// <summary>
+        /// Tells whether a downloaded UTC day has settled, so it may be saved: its UTC day ended at least a delay before now
+        /// </summary>
+        /// <param name="dayUtc">The UTC day; its time of day is ignored</param>
+        /// <param name="nowUtc">The time now</param>
+        /// <param name="settleDelay">How long after its end the day settles</param>
+        /// <returns><c>true</c> when the day's end plus <paramref name="settleDelay"/> is at or before <paramref name="nowUtc"/></returns>
+        public static bool IsSettled(DateTime dayUtc, DateTimeOffset nowUtc, TimeSpan settleDelay)
+        {
+            return GetDayEnd(dayUtc) + settleDelay <= nowUtc.UtcDateTime;
+        }
+
+        /// <summary>
+        /// Gets the end of a UTC day
+        /// </summary>
+        private static DateTime GetDayEnd(DateTime day)
+        {
+            return DateTime.SpecifyKind(day.Date, DateTimeKind.Utc).AddDays(1);
+        }
+
+        private static bool IsPastAvailableEnd(DatabentoHttpException ex)
+        {
+            return ex.Code == DatabentoErrorCase.DataEndAfterAvailableEnd || ex.Code == DatabentoErrorCase.DataStartAfterAvailableEnd;
+        }
+
+        /// <summary>
+        /// Creates the refusal Databento would make of a request past a remembered available end, which the request was cut at instead of
+        /// sent: a 422 <c>data_start_after_available_end</c> when it starts at or past the end, else <c>data_end_after_available_end</c>
+        /// </summary>
+        private static DatabentoHttpException CreatePastEndRefusal(string schema, string dataset, DateTime startUtc, DateTime endUtc, DateTime availableEndUtc)
+        {
+            bool startsPastIt = startUtc >= availableEndUtc;
+            string message = Invariant($"The request for {schema} of {dataset} from {startUtc:O} to {endUtc:O} {(startsPastIt ? "starts at or past" : "ends past")} the available end {availableEndUtc:O} the cache remembers, so it was cut at it");
+            return new DatabentoHttpException(422, message, startsPastIt ? "data_start_after_available_end" : "data_end_after_available_end");
+        }
+
+        /// <summary>
+        /// Reads the available end of a dataset's schema and remembers it until the next multiple of
+        /// <see cref="CachedDatabentoClientOptions.AvailableEndRefreshInterval"/> on the UTC clock after the read, so one read exactly on a
+        /// line is used until the next. A failed read is logged; a read the caller cancels throws <see cref="OperationCanceledException"/>.
+        /// </summary>
+        /// <returns>The end read, or <c>null</c> when the read failed</returns>
+        private async Task<DateTime?> ReadAvailableEndAsync(string schema, string dataset, CancellationToken cancellationToken)
+        {
+            DateTimeOffset readUtc = this.options.TimeProvider.GetUtcNow();
+            DateTime availableEndUtc;
+            try
+            {
+                availableEndUtc = await DatasetAvailability.GetAvailableEndAsync(this.jsonClient, dataset, schema, cancellationToken).ConfigureAwait(false);
+            }
+            catch(Exception ex) when(!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+            {
+                this.logger.AvailableEndReadFailed(schema, dataset, ex);
+                return null;
+            }
+
+            long step = this.options.AvailableEndRefreshInterval.Ticks;
+            DateTimeOffset refreshUtc = new DateTimeOffset(((readUtc.UtcTicks / step) + 1) * step, TimeSpan.Zero);
+            this.availableEnds[(dataset, schema)] = (availableEndUtc, refreshUtc);
+            this.logger.AvailableEndRemembered(schema, dataset, availableEndUtc, refreshUtc.UtcDateTime);
+            return availableEndUtc;
         }
 
         /// <summary>
         /// Downloads a chunk's records, split by symbol and day. A symbology refusal of the chunk is looked up, and the request sent again with
-        /// only the symbols listed in the span; the not-found symbols are then confirmed not listed.
+        /// only the symbols listed in the span; the not-found symbols are then confirmed not listed. With <c>pastEndHandled</c> a refusal
+        /// past the available end is not logged as a failed download, as the caller cuts the request and sends it once more.
         /// </summary>
         /// <exception cref="DatabentoHttpException">Databento refused the request, or refused it again with only the listed symbols</exception>
-        private async Task<ChunkAnswer<TJson>> DownloadChunkAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, string[] chunk, DateTime startUtc, DateTime endUtc, CancellationToken cancellationToken)
+        private async Task<ChunkAnswer<TJson>> DownloadChunkAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, string[] chunk, DateTime startUtc, DateTime endUtc, bool pastEndHandled, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
             where TJson : class, TSource
@@ -346,7 +485,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                     }
                 }
             }
-            catch(Exception ex) when(!ReferenceEquals(ex, unresolved) && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+            catch(Exception ex) when(!ReferenceEquals(ex, unresolved) && !(pastEndHandled && ex is DatabentoHttpException http && IsPastAvailableEnd(http)) && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
             {
                 this.logger.DownloadFailed(schema.Name, dataset, asked, this.options.TimeProvider.GetElapsedTime(startTimestamp), ex);
                 throw;
@@ -385,61 +524,68 @@ namespace Databento.CSharpApiClient.Caching.Client
         }
 
         /// <summary>
-        /// Serves a chunk's claimed symbol-days and saves the final ones: a day with records always, an empty day as the policies say
+        /// Serves a chunk's claimed symbol-days and saves the final ones: a day with records always, an empty day as the policies say. The
+        /// two suspect saves, an empty day and a bypass replacing a cached day, are made only for a day whose Databento condition is
+        /// <c>available</c>: the conditions are read once for the chunk, and only when there is such a save to make. With
+        /// <see cref="CachedDatabentoClientOptions.CheckAvailabilityFirst"/> a final day was already found available, so none is read.
         /// </summary>
-        private async Task ServeChunkAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, string[] chunk, Dictionary<string, HashSet<DateTime>> daysBySymbol, ChunkAnswer<TJson> answer, DayAvailability dayAvailability, CacheMode cacheMode, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
+        private async Task ServeChunkAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, string[] chunk, Dictionary<string, HashSet<DateTime>> daysBySymbol, ChunkAnswer<TJson> answer, DayFinality finality, CacheMode cacheMode, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
             where TJson : class, TSource
         {
             bool bypass = cacheMode == CacheMode.Bypass;
             List<SymbolDay> unconfirmedEmpty = new List<SymbolDay>();
+            List<GuardedSave<TJson>> guarded = new List<GuardedSave<TJson>>();
             foreach(string symbol in chunk)
             {
                 foreach(DateTime day in daysBySymbol[symbol].OrderBy(day => day))
                 {
                     SymbolDay symbolDay = new SymbolDay(symbol, day);
-                    bool final = dayAvailability.IsFinal(day);
-                    if(answer.Records.TryGetValue(symbolDay, out List<TJson> records))
+                    bool final = finality.IsFinal(day);
+                    answer.Records.TryGetValue(symbolDay, out List<TJson> records);
+
+                    // only looked at: what a bypass serves is the download's, so no cache hit is logged
+                    TSource[] cached = bypass && (final || records == null) ? await this.store.ReadAsync(schema, this.store.ListMonth(dataset, schema.Name, day), symbol, day, cancellationToken, logServed: false).ConfigureAwait(false) : null;
+                    if(records != null)
                     {
                         served[symbolDay] = records.ToArray();
-                        if(final)
+                        if(!final)
                         {
-                            await this.store.SaveAsync(dataset, schema.Name, symbol, day, records, bypass, cancellationToken).ConfigureAwait(false);
+                            this.LogNotFinal(symbol, day, schema.Name, finality);
+                        }
+                        else if(cached != null)
+                        {
+                            guarded.Add(new GuardedSave<TJson>(symbolDay, records, null, cached.Length));
                         }
                         else
                         {
-                            this.logger.NotFinal(symbol, day, schema.Name, dayAvailability.AvailableEndUtc);
+                            await this.store.SaveAsync(dataset, schema.Name, symbol, day, records, bypass, cancellationToken).ConfigureAwait(false);
                         }
 
                         continue;
                     }
 
-                    if(bypass)
+                    if(cached != null)
                     {
-                        // only looked at: what a bypass serves is the download's, so no cache hit is logged
-                        TSource[] cached = await this.store.ReadAsync(schema, this.store.ListMonth(dataset, schema.Name, day), symbol, day, cancellationToken, logServed: false).ConfigureAwait(false);
-                        if(cached != null)
+                        if(this.options.BypassMissAction == BypassMissAction.KeepCached || !final)
                         {
-                            if(this.options.BypassMissAction == BypassMissAction.KeepCached || !final)
-                            {
-                                this.logger.BypassKeptCached(symbol, day, schema.Name);
-                                served[symbolDay] = cached;
-                            }
-                            else
-                            {
-                                served[symbolDay] = Array.Empty<TSource>();
-                                await this.store.SaveAsync(dataset, schema.Name, symbol, day, Array.Empty<TJson>(), true, cancellationToken, "a bypass answered no records, so it replaces the cached day").ConfigureAwait(false);
-                            }
-
-                            continue;
+                            this.logger.BypassKeptCached(symbol, day, schema.Name);
+                            served[symbolDay] = cached;
                         }
+                        else
+                        {
+                            served[symbolDay] = Array.Empty<TSource>();
+                            guarded.Add(new GuardedSave<TJson>(symbolDay, new List<TJson>(), "a bypass answered no records, so it replaces the cached day", cached.Length));
+                        }
+
+                        continue;
                     }
 
                     served[symbolDay] = Array.Empty<TSource>();
                     if(!final)
                     {
-                        this.logger.NotFinal(symbol, day, schema.Name, dayAvailability.AvailableEndUtc);
+                        this.LogNotFinal(symbol, day, schema.Name, finality);
                         continue;
                     }
 
@@ -452,7 +598,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                     if(this.options.EmptyDays == EmptyDayPolicy.CacheAlways || answer.NotListed.Contains(symbol))
                     {
                         string reason = this.options.EmptyDays == EmptyDayPolicy.CacheAlways ? "EmptyDays is CacheAlways" : "it was not listed";
-                        await this.store.SaveAsync(dataset, schema.Name, symbol, day, Array.Empty<TJson>(), bypass, cancellationToken, reason).ConfigureAwait(false);
+                        guarded.Add(new GuardedSave<TJson>(symbolDay, new List<TJson>(), reason, null));
                     }
                     else
                     {
@@ -463,15 +609,98 @@ namespace Databento.CSharpApiClient.Caching.Client
 
             if(unconfirmedEmpty.Count > 0)
             {
-                await this.SaveConfirmedNotListedAsync(dataset, schema.Name, unconfirmedEmpty, bypass, cancellationToken).ConfigureAwait(false);
+                foreach(SymbolDay symbolDay in await this.ConfirmNotListedAsync(dataset, schema.Name, unconfirmedEmpty, cancellationToken).ConfigureAwait(false))
+                {
+                    guarded.Add(new GuardedSave<TJson>(symbolDay, new List<TJson>(), "it was not listed", null));
+                }
+            }
+
+            if(guarded.Count > 0)
+            {
+                await this.SaveIfAvailableAsync(dataset, schema.Name, guarded, bypass, cancellationToken).ConfigureAwait(false);
             }
         }
 
         /// <summary>
-        /// Saves as empty the empty symbol-days the symbology lookup confirms were not listed; a failed lookup leaves them unsaved
+        /// Makes the suspect saves of a chunk whose day's Databento condition is <c>available</c>, reading the conditions of their days in
+        /// one call; the others are left unsaved, the cached day of a bypass kept, and what was downloaded still served. A failed read
+        /// saves none of them and never throws over the answer served.
         /// </summary>
-        private async Task SaveConfirmedNotListedAsync(string dataset, string schema, List<SymbolDay> emptyDays, bool overwrite, CancellationToken cancellationToken)
+        private async Task SaveIfAvailableAsync<TJson>(string dataset, string schema, List<GuardedSave<TJson>> guarded, bool bypass, CancellationToken cancellationToken)
         {
+            IReadOnlyDictionary<DateTime, string> notAvailable;
+            try
+            {
+                notAvailable = await this.availability.GetNotFinalAsync(this.jsonClient, dataset, guarded.Select(save => save.SymbolDay.Day), cancellationToken).ConfigureAwait(false);
+            }
+            catch(Exception ex) when(!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+            {
+                this.logger.ConditionsReadFailed(guarded.Count, schema, dataset, ex);
+                notAvailable = null;
+            }
+
+            foreach(GuardedSave<TJson> save in guarded)
+            {
+                string symbol = save.SymbolDay.Symbol;
+                DateTime day = save.SymbolDay.Day;
+                string condition = null;
+                if(notAvailable == null || notAvailable.TryGetValue(day, out condition))
+                {
+                    string reason = notAvailable == null ? "Databento's condition for the day could not be read" : condition == null ? "Databento lists no condition for the day, nor for a later one" : Invariant($"Databento's condition for the day is {condition}");
+                    if(save.CachedCount.HasValue)
+                    {
+                        this.logger.BypassNotReplaced(symbol, day, schema, reason);
+                    }
+                    else
+                    {
+                        this.logger.EmptyDayNotSaved(symbol, day, schema, reason);
+                    }
+
+                    continue;
+                }
+
+                await this.store.SaveAsync(dataset, schema, symbol, day, save.Records, bypass, cancellationToken, save.EmptyReason).ConfigureAwait(false);
+                if(save.CachedCount.HasValue)
+                {
+                    this.logger.BypassReplaced(symbol, day, schema, save.CachedCount.Value, save.Records.Count);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Logs a day served but not saved, and why
+        /// </summary>
+        private void LogNotFinal(string symbol, DateTime day, string schema, DayFinality finality)
+        {
+            if(!this.logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            string reason;
+            if(!finality.IsSettled(day))
+            {
+                reason = finality.SettleDelay == TimeSpan.Zero ? "its UTC day has not ended" : Invariant($"its UTC day has not ended {finality.SettleDelay} ago");
+            }
+            else if(finality.Availability != null)
+            {
+                reason = Invariant($"Databento has not found it final; the available end is {finality.Availability.AvailableEndUtc:yyyy-MM-ddTHH:mm:ssZ}");
+            }
+            else
+            {
+                reason = Invariant($"it ends past the available end {finality.EndUtc:yyyy-MM-ddTHH:mm:ssZ}");
+            }
+
+            this.logger.NotFinal(symbol, day, schema, reason);
+        }
+
+        /// <summary>
+        /// Gets the empty symbol-days the symbology lookup confirms were not listed, so they may be saved as empty; a failed lookup confirms
+        /// none
+        /// </summary>
+        private async Task<List<SymbolDay>> ConfirmNotListedAsync(string dataset, string schema, List<SymbolDay> emptyDays, CancellationToken cancellationToken)
+        {
+            List<SymbolDay> confirmed = new List<SymbolDay>();
             SymbolListing listing;
             try
             {
@@ -480,19 +709,22 @@ namespace Databento.CSharpApiClient.Caching.Client
             catch(Exception ex) when(IsLookupFailure(ex, cancellationToken))
             {
                 this.logger.EmptyDaysLookupFailed(emptyDays.Count, schema, dataset, ex.Message);
-                return;
+                return confirmed;
             }
 
             foreach(SymbolDay symbolDay in emptyDays)
             {
-                if(!listing.IsConfirmedNotListed(symbolDay.Symbol, symbolDay.Day))
+                if(listing.IsConfirmedNotListed(symbolDay.Symbol, symbolDay.Day))
+                {
+                    confirmed.Add(symbolDay);
+                }
+                else
                 {
                     this.logger.EmptyDayNotSaved(symbolDay.Symbol, symbolDay.Day, schema, "the symbology lookup has not confirmed it was not listed");
-                    continue;
                 }
-
-                await this.store.SaveAsync(dataset, schema, symbolDay.Symbol, symbolDay.Day, Array.Empty<IRecord>(), overwrite, cancellationToken, "it was not listed").ConfigureAwait(false);
             }
+
+            return confirmed;
         }
 
         /// <summary>
@@ -527,5 +759,35 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// A chunk's records by symbol-day, and the symbols the lookup confirmed were not listed in the span
         /// </summary>
         private sealed record ChunkAnswer<TJson>(Dictionary<SymbolDay, List<TJson>> Records, HashSet<string> NotListed);
+
+        /// <summary>
+        /// A save made only when Databento's condition for the day is <c>available</c>: an empty day, or a bypass replacing a cached day
+        /// </summary>
+        /// <param name="SymbolDay">The symbol-day</param>
+        /// <param name="Records">The records downloaded, none for an empty day</param>
+        /// <param name="EmptyReason">Why an empty day is saved as empty, for the log; <c>null</c> for a day with records</param>
+        /// <param name="CachedCount">The records of the cached day a bypass replaces, or <c>null</c> when none is cached</param>
+        private sealed record GuardedSave<TJson>(SymbolDay SymbolDay, List<TJson> Records, string EmptyReason, int? CachedCount);
+
+        /// <summary>
+        /// Which downloaded days may be saved: those <see cref="CachedTimeseries.IsSettled"/> finds settled that end by the request's end and, when
+        /// availability was checked first, that Databento also found final
+        /// </summary>
+        /// <param name="NowUtc">The time of the download</param>
+        /// <param name="SettleDelay">How long after its end a day is first saved</param>
+        /// <param name="EndUtc">The end the request was sent with, cut at the available end when one was known</param>
+        /// <param name="Availability">What the check found, or <c>null</c> when availability was not checked</param>
+        private sealed record DayFinality(DateTimeOffset NowUtc, TimeSpan SettleDelay, DateTime EndUtc, DayAvailability Availability)
+        {
+            public bool IsSettled(DateTime day)
+            {
+                return CachedTimeseries.IsSettled(day, this.NowUtc, this.SettleDelay);
+            }
+
+            public bool IsFinal(DateTime day)
+            {
+                return this.IsSettled(day) && GetDayEnd(day) <= this.EndUtc && (this.Availability == null || this.Availability.IsFinal(day));
+            }
+        }
     }
 }

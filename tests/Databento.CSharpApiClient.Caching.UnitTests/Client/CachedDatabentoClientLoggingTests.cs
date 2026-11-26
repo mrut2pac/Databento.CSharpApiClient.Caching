@@ -117,12 +117,57 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 FakeLogger logger = new FakeLogger();
                 using(CachedDatabentoClient client = fixture.CreateClient(options => options.Logger = logger))
                 {
+                    fixture.Clock.SetUtcNow(Day.AddHours(20));
+                    fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
+
+                    await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
+
+                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m is served but not saved", "not final", "its UTC day has not ended 00:15:00 ago)");
+                    logger.AssertNotLogged("Saved ");
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task GetCbbo1mAsync_DayWithinTheSettleDelay_LogsTheDelay()
+        {
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            {
+                FakeLogger logger = new FakeLogger();
+                using(CachedDatabentoClient client = fixture.CreateClient(options =>
+                {
+                    options.Logger = logger;
+                    options.SettleDelay = TimeSpan.FromHours(1);
+                }))
+                {
+                    fixture.Clock.SetUtcNow(Day.AddDays(1).AddMinutes(30));
+                    fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
+
+                    await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
+
+                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m is served but not saved", "its UTC day has not ended 01:00:00 ago");
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task GetCbbo1mAsync_CheckAvailabilityFirstDayNotFinal_LogsTheAvailableEnd()
+        {
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            {
+                FakeLogger logger = new FakeLogger();
+                using(CachedDatabentoClient client = fixture.CreateClient(options =>
+                {
+                    options.Logger = logger;
+                    options.CheckAvailabilityFirst = true;
+                }))
+                {
                     fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
                     fixture.Databento.Conditions[Day] = "degraded";
 
                     await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
-                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m is served but not saved", "not final");
+                    logger.AssertLogged(LogLevel.Debug, Call + " 2026-10-16 cbbo-1m is served but not saved", "Databento has not found it final", "2026-11-01T00:00:00Z");
                     logger.AssertNotLogged("Saved ");
                 }
             }
@@ -134,7 +179,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(CachedClientFixture fixture = new CachedClientFixture())
             {
                 FakeLogger logger = new FakeLogger();
-                using(CachedDatabentoClient client = fixture.CreateClient(options => options.Logger = logger))
+                using(CachedDatabentoClient client = fixture.CreateClient(options =>
+                {
+                    options.Logger = logger;
+                    options.CheckAvailabilityFirst = true;
+                }))
                 {
                     fixture.Databento.AvailableEndUtc = Day;
 
