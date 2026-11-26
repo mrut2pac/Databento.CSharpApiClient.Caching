@@ -43,6 +43,14 @@ Added
 
 Changed
 - Depends on Microsoft.Extensions.Logging.Abstractions 8.0.3.
+- Built on Databento.CSharpApiClient 2.7.2, which reads a JSON array one record at a time as it arrives.
+
+Fixed
+- A day file is handed to the client as it is decompressed, and its records parsed one at a time, instead of the
+  whole day held several times over on the large object heap. A compaction of many groups at once reached
+  gigabytes: on invented cbbo-1s days sized like an SPXW month, 12 groups at once peaked at a 4.4 GB GC heap
+  (3.4 GB LOH) before and under 1 GB (69 MB LOH) after, allocating 102 GB instead of 342 GB.
+
 v1.3.0 - 2026-11-25
 
 Added
