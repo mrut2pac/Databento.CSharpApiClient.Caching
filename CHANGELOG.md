@@ -16,6 +16,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 - Depends on `Microsoft.Extensions.Logging.Abstractions` 8.0.3, besides the client and Parquet.Net.
+- Built on `Databento.CSharpApiClient` 2.7.2, which reads a JSON array one record at a time as it arrives.
+
+### Fixed
+- A day file's records are parsed one at a time as it is decompressed, instead of decompressing the whole day into memory and having the client read the JSON array as one document, which held the day several times over on the large object heap. A compaction of many groups at once (`MaxParallelGroups`) reached gigabytes, mostly LOH garbage and fragmentation: on invented cbbo-1s day files sized like an SPXW month, 12 groups at once peaked at a 4.4 GB GC heap (3.4 GB LOH) before and 1.0 GB (72 MB LOH) after, allocated 101 GB instead of 342 GB, and finished in 186 s instead of 204 s. Reads served from day files gain the same. A day file that is not one JSON array of records is still refused as unreadable.
 
 ## [1.3.0] - 2026-11-25
 
