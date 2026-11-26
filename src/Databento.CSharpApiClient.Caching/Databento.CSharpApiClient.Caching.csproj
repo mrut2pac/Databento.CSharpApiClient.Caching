@@ -91,6 +91,7 @@ Full history: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob
     <!-- the client as its users get it: a feature the package needs ships in a client release first -->
     <PackageReference Include="Databento.CSharpApiClient" Version="2.7.1" />
     <PackageReference Include="Parquet.Net" Version="6.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
   </ItemGroup>
 

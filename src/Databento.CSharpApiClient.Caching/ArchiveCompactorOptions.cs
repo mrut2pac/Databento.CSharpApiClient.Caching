@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Databento.CSharpApiClient.Caching
 {
     /// <summary>
@@ -8,6 +11,8 @@ namespace Databento.CSharpApiClient.Caching
     /// </summary>
     public sealed class ArchiveCompactorOptions
     {
+        private ILogger logger = NullLogger.Instance;
+
         /// <summary>
         /// Gets or sets the cache root, which holds <c>metadata.json</c> and one folder per Databento dataset.
         /// </summary>
@@ -89,5 +94,17 @@ namespace Databento.CSharpApiClient.Caching
         /// is only diagnostic.
         /// </summary>
         public IProgress<ArchiveCompactionProgress> Progress { get; set; }
+
+        /// <summary>
+        /// Gets or sets the logger the run is written to: its start and end, each group's files, retried deletes, unreadable day files,
+        /// suspect days and failed groups. Default, and when set to <c>null</c>, <see cref="NullLogger.Instance"/>: nothing is logged.
+        /// Its methods shall not throw; anything they throw is dropped, losing the line but never changing what is served or written.
+        /// It may be called from several threads at once, so it must be thread-safe.
+        /// </summary>
+        public ILogger Logger
+        {
+            get => this.logger;
+            set => this.logger = value ?? NullLogger.Instance;
+        }
     }
 }

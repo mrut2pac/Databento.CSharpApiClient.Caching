@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 using Databento.CSharpApiClient.DataModel;
 using Databento.CSharpApiClient.Exceptions;
 
@@ -198,6 +199,7 @@ namespace Databento.CSharpApiClient.Caching.Client
 
                     if(this.options.EmptyDays == EmptyDayPolicy.Never)
                     {
+                        this.options.Logger.EmptyDayNotSaved(symbol, day, schema.Name, "EmptyDays is Never");
                         continue;
                     }
 
@@ -211,17 +213,19 @@ namespace Databento.CSharpApiClient.Caching.Client
                             }
                             catch(Exception ex) when(IsLookupFailure(ex, cancellationToken))
                             {
+                                this.options.Logger.BatchEmptyDaysLookupFailed(run.Folder.Symbols.Count, ex.Message);
                                 lookupFailed = true;
                             }
                         }
 
                         if(listing == null || !listing.IsConfirmedNotListed(symbol, day))
                         {
+                            this.options.Logger.EmptyDayNotSaved(symbol, day, schema.Name, lookupFailed ? "the symbology lookup failed" : "the symbology lookup has not confirmed it was not listed");
                             continue;
                         }
                     }
 
-                    if(await this.store.SaveAsync(run.Folder.Dataset, schema.Name, symbol, day, Array.Empty<TJson>(), false, cancellationToken).ConfigureAwait(false))
+                    if(await this.store.SaveAsync(run.Folder.Dataset, schema.Name, symbol, day, Array.Empty<TJson>(), false, cancellationToken, this.options.EmptyDays == EmptyDayPolicy.CacheAlways ? "EmptyDays is CacheAlways" : "it was not listed").ConfigureAwait(false))
                     {
                         ++counts.SavedEmpty;
                     }

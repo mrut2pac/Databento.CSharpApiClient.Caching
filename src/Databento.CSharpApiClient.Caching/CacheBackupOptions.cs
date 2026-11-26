@@ -1,5 +1,8 @@
 using System;
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Databento.CSharpApiClient.Caching
 {
     /// <summary>
@@ -7,6 +10,8 @@ namespace Databento.CSharpApiClient.Caching
     /// </summary>
     public sealed class CacheBackupOptions
     {
+        private ILogger logger = NullLogger.Instance;
+
         /// <summary>
         /// Gets or sets the cache root to back up, which holds <c>metadata.json</c> and one folder per Databento dataset.
         /// </summary>
@@ -38,5 +43,17 @@ namespace Databento.CSharpApiClient.Caching
         /// Gets or sets the clock that names each backup by its start.
         /// </summary>
         public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+        /// <summary>
+        /// Gets or sets the logger the backup's steps are written to, with its refusals and failures. Default, and when set to <c>null</c>,
+        /// <see cref="NullLogger.Instance"/>: nothing is logged.
+        /// Its methods shall not throw; anything they throw is dropped, losing the line but never changing what is served or written.
+        /// It may be called from several threads at once, so it must be thread-safe.
+        /// </summary>
+        public ILogger Logger
+        {
+            get => this.logger;
+            set => this.logger = value ?? NullLogger.Instance;
+        }
     }
 }

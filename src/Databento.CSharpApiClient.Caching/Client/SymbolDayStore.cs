@@ -7,7 +7,10 @@ using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Archive;
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 using Databento.CSharpApiClient.DataModel;
+
+using Microsoft.Extensions.Logging;
 
 namespace Databento.CSharpApiClient.Caching.Client
 {
@@ -21,16 +24,19 @@ namespace Databento.CSharpApiClient.Caching.Client
 
         private readonly ArchiveCatalog catalog;
 
+        private readonly ILogger logger;
+
         /// <summary>
         /// Whether the root's <c>metadata.json</c> is known to be there, so it is written before the first day file
         /// </summary>
         private volatile bool metadataWritten;
 
-        public SymbolDayStore(string cacheRoot, string cutoff, ArchiveCatalog catalog)
+        public SymbolDayStore(string cacheRoot, string cutoff, ArchiveCatalog catalog, ILogger logger)
         {
             this.cacheRoot = cacheRoot;
             this.Cutoff = cutoff;
             this.catalog = catalog;
+            this.logger = logger;
         }
 
         /// <summary>
@@ -54,8 +60,10 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// <param name="symbol">Databento raw symbol</param>
         /// <param name="day">UTC day</param>
         /// <param name="cancellationToken">Cancellation token</param>
+        /// <param name="logServed">Whether where the day was served from, or that it is not cached, is logged; not for a look at what a
+        /// bypass would replace</param>
         /// <returns>The records, empty for a day cached as empty, or <c>null</c> when the day is not cached</returns>
-        public async Task<TSource[]> ReadAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, CacheMonthFolder folder, string symbol, DateTime day, CancellationToken cancellationToken)
+        public async Task<TSource[]> ReadAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, CacheMonthFolder folder, string symbol, DateTime day, CancellationToken cancellationToken, bool logServed = true)
             where TSource : class, IRecord
             where TRecord : class, TSource
             where TJson : class, TSource
@@ -64,9 +72,10 @@ namespace Databento.CSharpApiClient.Caching.Client
             if(folder.Contains(fileName))
             {
                 string path = Path.Combine(folder.Directory, fileName);
+                TJson[] records = null;
                 try
                 {
-                    return await DayFile.ReadAsync(path, schema.ReadDayFile, cancellationToken).ConfigureAwait(false);
+                    records = await DayFile.ReadAsync(path, schema.ReadDayFile, cancellationToken).ConfigureAwait(false);
                 }
                 catch(Exception ex) when(ex is FileNotFoundException || ex is DirectoryNotFoundException)
                 {
@@ -75,15 +84,40 @@ namespace Databento.CSharpApiClient.Caching.Client
                 }
                 catch(Exception ex) when(ex is InvalidDataException || ex is JsonException)
                 {
-                    TryDelete(path);
+                    if(TryDelete(path, out string deleteError))
+                    {
+                        this.logger.DayFileDeleted(path, ex.Message);
+                    }
+                    else
+                    {
+                        this.logger.DayFileNotDeleted(path, ex.Message, deleteError);
+                    }
                 }
                 catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
                 {
                     // the disk's, not the file's: left as it is
+                    this.logger.DayFileNotRead(path, ex.Message);
+                }
+
+                // logged once the read is done, apart from its failures
+                if(records != null)
+                {
+                    if(logServed)
+                    {
+                        this.logger.ServedFromDayFile(symbol, day, folder.Schema, path, records.Length);
+                    }
+
+                    return records;
                 }
             }
 
-            return await this.catalog.ReadSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day).ConfigureAwait(false);
+            TRecord[] archived = await this.catalog.ReadSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, logServed).ConfigureAwait(false);
+            if(archived == null && logServed)
+            {
+                this.logger.NotCached(symbol, day, folder.Schema, folder.Dataset);
+            }
+
+            return archived;
         }
 
         /// <summary>
@@ -119,8 +153,9 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// <param name="records">The day's records; empty for a day saved as empty</param>
         /// <param name="overwrite">Whether a day file already there is replaced; when not, it is kept</param>
         /// <param name="cancellationToken">Cancellation token</param>
+        /// <param name="emptyReason">Why a day with no records is saved as empty, for the log; <c>null</c> for a day with records</param>
         /// <returns><c>true</c> when the day file now holds these records, <c>false</c> when one already there was kept</returns>
-        public async Task<bool> SaveAsync<TJson>(string dataset, string schema, string symbol, DateTime day, IReadOnlyList<TJson> records, bool overwrite, CancellationToken cancellationToken)
+        public async Task<bool> SaveAsync<TJson>(string dataset, string schema, string symbol, DateTime day, IReadOnlyList<TJson> records, bool overwrite, CancellationToken cancellationToken, string emptyReason = null)
         {
             if(!this.metadataWritten)
             {
@@ -129,18 +164,39 @@ namespace Databento.CSharpApiClient.Caching.Client
             }
 
             string path = Path.Combine(DayFileName.GetMonthDirectory(this.cacheRoot, dataset, schema, day.Year, day.Month), DayFileName.Format(symbol, day, this.Cutoff));
-            return await DayFile.WriteAsync(path, records, overwrite, cancellationToken).ConfigureAwait(false);
+            bool saved = await DayFile.WriteAsync(path, records, overwrite, cancellationToken).ConfigureAwait(false);
+            if(saved && records.Count == 0 && emptyReason != null)
+            {
+                this.logger.EmptyDaySaved(symbol, day, schema, path, emptyReason);
+            }
+            else if(saved)
+            {
+                this.logger.Saved(symbol, day, schema, records.Count, path);
+            }
+            else
+            {
+                this.logger.DayFileKept(path, records.Count, symbol, day, schema);
+            }
+
+            return saved;
         }
 
-        private static void TryDelete(string path)
+        /// <summary>
+        /// Deletes a day file that cannot be parsed
+        /// </summary>
+        /// <returns><c>false</c> when it could not be deleted, with why: it is read again next time, and deleted then</returns>
+        private static bool TryDelete(string path, out string error)
         {
             try
             {
                 File.Delete(path);
+                error = null;
+                return true;
             }
             catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
             {
-                // read again next time, and deleted then
+                error = ex.Message;
+                return false;
             }
         }
     }

@@ -9,8 +9,11 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 using Databento.CSharpApiClient.DataModel;
 using Databento.CSharpApiClient.Exceptions;
+
+using Microsoft.Extensions.Logging;
 
 namespace Databento.CSharpApiClient.Caching.Client
 {
@@ -35,6 +38,8 @@ namespace Databento.CSharpApiClient.Caching.Client
 
         private readonly DatasetAvailability availability;
 
+        private readonly ILogger logger;
+
         /// <summary>
         /// Shared by every client of the process, so two clients on one cache root download a symbol-day once between them
         /// </summary>
@@ -52,6 +57,7 @@ namespace Databento.CSharpApiClient.Caching.Client
             this.dbnClient = dbnClient;
             this.store = store;
             this.availability = availability;
+            this.logger = options.Logger;
             this.rootKey = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.CacheRoot));
         }
 
@@ -94,6 +100,7 @@ namespace Databento.CSharpApiClient.Caching.Client
             }
 
             List<string> distinctSymbols = symbols.Distinct(StringComparer.Ordinal).ToList();
+            this.logger.TimeseriesRequested(schema.Name, dataset, distinctSymbols, startUtc, endUtc, cacheMode);
             List<DateTime> days = GetDays(startUtc, endUtc);
             Dictionary<SymbolDay, TSource[]> served = new Dictionary<SymbolDay, TSource[]>();
             HashSet<SymbolDay> pending = new HashSet<SymbolDay>(distinctSymbols.SelectMany(symbol => days.Select(day => new SymbolDay(symbol, day))));
@@ -145,6 +152,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                 if(pending.Count > 0)
                 {
                     // another request was downloading these: what it saved is read, what it did not is asked for on the next pass
+                    this.logger.WaitingForDownload(pending.Count, schema.Name, dataset);
                     await Task.WhenAll(releases).WaitAsync(cancellationToken).ConfigureAwait(false);
                     if(cacheMode == CacheMode.Use)
                     {
@@ -267,6 +275,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                     if(endUtc <= startUtc)
                     {
                         // nothing of the span is available yet: served empty, saved never
+                        this.logger.NotAvailableYet(schema.Name, dataset, chunk, startUtc, dayAvailability.AvailableEndUtc);
                         foreach(string symbol in chunk)
                         {
                             foreach(DateTime day in daysBySymbol[symbol])
@@ -296,23 +305,51 @@ namespace Databento.CSharpApiClient.Caching.Client
         {
             TJson[] records;
             HashSet<string> notListed = new HashSet<string>(StringComparer.Ordinal);
+            long startTimestamp = this.options.TimeProvider.GetTimestamp();
+
+            // the symbols of the request answered or failed, and when it was sent: the retry's after a refusal
+            string[] asked = chunk;
+
+            // a refusal the lookup cannot resolve is logged as such where it is thrown
+            Exception unresolved = null;
             try
             {
-                records = await this.FetchAsync(schema, new RangeRequest(dataset, chunk, startUtc, endUtc, cancellationToken)).ConfigureAwait(false);
-            }
-            catch(DatabentoHttpException ex) when(IsSymbologyRefusal(ex))
-            {
-                // looked up over the days asked for, which end at the available end
-                SymbolListing listing = await SymbolListing.ResolveAsync(this.jsonClient, dataset, chunk, startUtc.Date, endUtc.AddTicks(-1).Date, this.options.MaxSymbolsPerRequest, cancellationToken).ConfigureAwait(false);
-                notListed.UnionWith(chunk.Where(listing.IsConfirmedNotListed));
-                if(notListed.Count == 0 || chunk.Any(symbol => !listing.IsListed(symbol) && !notListed.Contains(symbol)))
+                try
                 {
-                    // the refusal is not about a symbol the lookup can tell of, or the lookup left a symbol unanswered: nothing is saved for it
-                    throw;
+                    records = await this.FetchAsync(schema, dataset, chunk, startUtc, endUtc, cancellationToken).ConfigureAwait(false);
                 }
+                catch(DatabentoHttpException ex) when(IsSymbologyRefusal(ex))
+                {
+                    // looked up over the days asked for, which end at the available end
+                    SymbolListing listing = await SymbolListing.ResolveAsync(this.jsonClient, dataset, chunk, startUtc.Date, endUtc.AddTicks(-1).Date, this.options.MaxSymbolsPerRequest, cancellationToken).ConfigureAwait(false);
+                    notListed.UnionWith(chunk.Where(listing.IsConfirmedNotListed));
+                    if(notListed.Count == 0 || chunk.Any(symbol => !listing.IsListed(symbol) && !notListed.Contains(symbol)))
+                    {
+                        // the refusal is not about a symbol the lookup can tell of, or the lookup left a symbol unanswered: nothing is saved for it
+                        this.logger.RefusalUnresolved(schema.Name, dataset, chunk.Length, ex.Message);
+                        unresolved = ex;
+                        throw;
+                    }
 
-                string[] listed = chunk.Where(listing.IsListed).ToArray();
-                records = listed.Length == 0 ? Array.Empty<TJson>() : await this.FetchAsync(schema, new RangeRequest(dataset, listed, startUtc, endUtc, cancellationToken)).ConfigureAwait(false);
+                    string[] listed = chunk.Where(listing.IsListed).ToArray();
+                    if(listed.Length == 0)
+                    {
+                        this.logger.RefusedNoneListed(schema.Name, dataset, chunk.Length, ex.Message);
+                        records = Array.Empty<TJson>();
+                    }
+                    else
+                    {
+                        this.logger.RefusedAskingAgain(schema.Name, dataset, chunk.Length, ex.Message, listed.Length);
+                        asked = listed;
+                        startTimestamp = this.options.TimeProvider.GetTimestamp();
+                        records = await this.FetchAsync(schema, dataset, listed, startUtc, endUtc, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch(Exception ex) when(!ReferenceEquals(ex, unresolved) && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+            {
+                this.logger.DownloadFailed(schema.Name, dataset, asked, this.options.TimeProvider.GetElapsedTime(startTimestamp), ex);
+                throw;
             }
 
             HashSet<string> requested = new HashSet<string>(chunk, StringComparer.Ordinal);
@@ -335,6 +372,13 @@ namespace Databento.CSharpApiClient.Caching.Client
                 }
 
                 dayRecords.Add(record);
+            }
+
+            // nothing was asked again when no symbol of the chunk was listed
+            if(notListed.Count < chunk.Length && this.logger.IsEnabled(LogLevel.Information))
+            {
+                int symbolsWithRecords = bySymbolDay.Keys.Select(symbolDay => symbolDay.Symbol).Distinct(StringComparer.Ordinal).Count();
+                this.logger.Downloaded(records.Length, schema.Name, dataset, symbolsWithRecords, asked.Length, this.options.TimeProvider.GetElapsedTime(startTimestamp));
             }
 
             return new ChunkAnswer<TJson>(bySymbolDay, notListed);
@@ -363,23 +407,29 @@ namespace Databento.CSharpApiClient.Caching.Client
                         {
                             await this.store.SaveAsync(dataset, schema.Name, symbol, day, records, bypass, cancellationToken).ConfigureAwait(false);
                         }
+                        else
+                        {
+                            this.logger.NotFinal(symbol, day, schema.Name, dayAvailability.AvailableEndUtc);
+                        }
 
                         continue;
                     }
 
                     if(bypass)
                     {
-                        TSource[] cached = await this.store.ReadAsync(schema, this.store.ListMonth(dataset, schema.Name, day), symbol, day, cancellationToken).ConfigureAwait(false);
+                        // only looked at: what a bypass serves is the download's, so no cache hit is logged
+                        TSource[] cached = await this.store.ReadAsync(schema, this.store.ListMonth(dataset, schema.Name, day), symbol, day, cancellationToken, logServed: false).ConfigureAwait(false);
                         if(cached != null)
                         {
                             if(this.options.BypassMissAction == BypassMissAction.KeepCached || !final)
                             {
+                                this.logger.BypassKeptCached(symbol, day, schema.Name);
                                 served[symbolDay] = cached;
                             }
                             else
                             {
                                 served[symbolDay] = Array.Empty<TSource>();
-                                await this.store.SaveAsync(dataset, schema.Name, symbol, day, Array.Empty<TJson>(), true, cancellationToken).ConfigureAwait(false);
+                                await this.store.SaveAsync(dataset, schema.Name, symbol, day, Array.Empty<TJson>(), true, cancellationToken, "a bypass answered no records, so it replaces the cached day").ConfigureAwait(false);
                             }
 
                             continue;
@@ -387,14 +437,22 @@ namespace Databento.CSharpApiClient.Caching.Client
                     }
 
                     served[symbolDay] = Array.Empty<TSource>();
-                    if(!final || this.options.EmptyDays == EmptyDayPolicy.Never)
+                    if(!final)
                     {
+                        this.logger.NotFinal(symbol, day, schema.Name, dayAvailability.AvailableEndUtc);
+                        continue;
+                    }
+
+                    if(this.options.EmptyDays == EmptyDayPolicy.Never)
+                    {
+                        this.logger.EmptyDayNotSaved(symbol, day, schema.Name, "EmptyDays is Never");
                         continue;
                     }
 
                     if(this.options.EmptyDays == EmptyDayPolicy.CacheAlways || answer.NotListed.Contains(symbol))
                     {
-                        await this.store.SaveAsync(dataset, schema.Name, symbol, day, Array.Empty<TJson>(), bypass, cancellationToken).ConfigureAwait(false);
+                        string reason = this.options.EmptyDays == EmptyDayPolicy.CacheAlways ? "EmptyDays is CacheAlways" : "it was not listed";
+                        await this.store.SaveAsync(dataset, schema.Name, symbol, day, Array.Empty<TJson>(), bypass, cancellationToken, reason).ConfigureAwait(false);
                     }
                     else
                     {
@@ -421,20 +479,32 @@ namespace Databento.CSharpApiClient.Caching.Client
             }
             catch(Exception ex) when(IsLookupFailure(ex, cancellationToken))
             {
+                this.logger.EmptyDaysLookupFailed(emptyDays.Count, schema, dataset, ex.Message);
                 return;
             }
 
-            foreach(SymbolDay symbolDay in emptyDays.Where(symbolDay => listing.IsConfirmedNotListed(symbolDay.Symbol, symbolDay.Day)))
+            foreach(SymbolDay symbolDay in emptyDays)
             {
-                await this.store.SaveAsync(dataset, schema, symbolDay.Symbol, symbolDay.Day, Array.Empty<IRecord>(), overwrite, cancellationToken).ConfigureAwait(false);
+                if(!listing.IsConfirmedNotListed(symbolDay.Symbol, symbolDay.Day))
+                {
+                    this.logger.EmptyDayNotSaved(symbolDay.Symbol, symbolDay.Day, schema, "the symbology lookup has not confirmed it was not listed");
+                    continue;
+                }
+
+                await this.store.SaveAsync(dataset, schema, symbolDay.Symbol, symbolDay.Day, Array.Empty<IRecord>(), overwrite, cancellationToken, "it was not listed").ConfigureAwait(false);
             }
         }
 
-        private Task<TJson[]> FetchAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, RangeRequest request)
+        /// <summary>
+        /// Downloads the records of symbols over a window, logging the request first
+        /// </summary>
+        private Task<TJson[]> FetchAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, string[] symbols, DateTime startUtc, DateTime endUtc, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
             where TJson : class, TSource
         {
+            this.logger.Requesting(schema.Name, dataset, symbols, startUtc.Date, endUtc.AddTicks(-1).Date, startUtc, endUtc);
+            RangeRequest request = new RangeRequest(dataset, symbols, startUtc, endUtc, cancellationToken);
             return this.options.Transport == DatabentoTransport.Dbn ? schema.DownloadDbn(this.dbnClient, request) : schema.DownloadJson(this.jsonClient, request);
         }
 

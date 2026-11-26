@@ -3,6 +3,8 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Databento.CSharpApiClient.Caching.Logging;
+
 namespace Databento.CSharpApiClient.Caching.Compaction
 {
     /// <summary>
@@ -60,8 +62,11 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                 {
                     if(attempt >= this.options.RetireAttempts)
                     {
+                        this.options.Logger.FileLeft(path, attempt, ex.Message);
                         return DeleteResult.Left;
                     }
+
+                    this.options.Logger.DeleteRetried(path, attempt, this.options.RetireAttempts, delay, ex.Message);
                 }
 
                 await Task.Delay(delay, this.options.TimeProvider, cancellationToken).ConfigureAwait(false);
@@ -72,15 +77,18 @@ namespace Databento.CSharpApiClient.Caching.Compaction
         /// <summary>
         /// Deletes a temporary file once, leaving it when that fails
         /// </summary>
-        public static void TryDeleteOnce(string path)
+        /// <returns>Whether the delete went through; <c>true</c> also when there was no such file</returns>
+        public static bool TryDeleteOnce(string path)
         {
             try
             {
                 File.Delete(path);
+                return true;
             }
             catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
             {
                 // a temporary file left behind never matches a version's name, so it does no harm
+                return false;
             }
         }
     }

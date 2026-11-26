@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Databento.CSharpApiClient.Caching.Archive;
 using Databento.CSharpApiClient.Caching.Archive.Schemas;
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 using Databento.CSharpApiClient.DataModel;
 
 namespace Databento.CSharpApiClient.Caching.Compaction
@@ -178,7 +179,10 @@ namespace Databento.CSharpApiClient.Caching.Compaction
         {
             foreach(string path in this.request.ArchiveFiles.Where(path => ArchiveFileName.IsTemporaryFileOf(Path.GetFileName(path), prefix)))
             {
-                ArchiveFileOperations.TryDeleteOnce(path);
+                if(ArchiveFileOperations.TryDeleteOnce(path))
+                {
+                    this.options.Logger.TemporaryFileDeleted(path);
+                }
             }
         }
 
@@ -218,13 +222,20 @@ namespace Databento.CSharpApiClient.Caching.Compaction
             try
             {
                 index = await this.WriteAsync(temporaryPath, identity, cancellationToken).ConfigureAwait(false);
+                this.options.Logger.ArchiveFileWritten(temporaryPath, this.options.Verification);
                 this.run.TemporaryFileWritten?.Invoke(temporaryPath);
                 await this.VerifyAsync(temporaryPath, index, cancellationToken).ConfigureAwait(false);
+
+                if(this.options.Verification != ArchiveVerification.None)
+                {
+                    this.options.Logger.ArchiveFileVerified(temporaryPath, this.options.Verification);
+                }
 
                 dayFilesAbsorbed = this.sources.Values.Count(dayFile => dayFile != null);
                 if(dayFilesAbsorbed == 0 && !this.FoldsDelta(version))
                 {
                     // every day file was unreadable or dropped, so the new file would add nothing to the current version
+                    this.options.Logger.NothingToPublish(this.request.RelativeDirectory, this.request.Group);
                     return null;
                 }
 
@@ -244,11 +255,14 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                 this.run.Report.DayFileSuspect(suspect);
             }
 
+            this.options.Logger.SuspectDaysFound(this.request.RelativeDirectory, this.request.Group, suspects);
+
             // the files the new one replaces: the whole version for a rebuild, the previous generation for a delta
             IEnumerable<string> replaced = version == null ? Enumerable.Empty<string>() : this.rebuild ? version.Paths : version.Paths.Skip(1);
             long bytesBefore = this.sources.Values.Where(dayFile => dayFile != null).Sum(dayFile => dayFile.Length) + replaced.Sum(path => new FileInfo(path).Length);
             bool deltaFolded = this.rebuild && this.currentFiles.Count > 1;
             this.run.Report.GroupWritten(identity.Kind, dayFilesAbsorbed, deltaFolded, index.Entries.Count, index.RowCount, bytesBefore, new FileInfo(publishedPath).Length);
+            this.options.Logger.ArchiveFilePublished(publishedPath, index.Entries.Count, dayFilesAbsorbed, deltaFolded);
             return new PublishedFile(publishedPath, index);
         }
 
@@ -580,6 +594,7 @@ namespace Databento.CSharpApiClient.Caching.Compaction
             }
             catch(Exception ex) when(IsUnreadable(ex))
             {
+                this.options.Logger.DayFileLeftOut(dayFile.Path, ex.Message);
                 this.run.Report.DayFileUnreadable(this.ToRelativePath(dayFile), ex.Message);
                 return null;
             }
@@ -664,6 +679,7 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                 if(!await this.IsListedByVersionAsync(path, currentVersion, openedIndexes).ConfigureAwait(false))
                 {
                     // it may hold a day's only copy, such as a delta whose full file is gone
+                    this.options.Logger.FileOrphaned(path);
                     this.run.Report.FileOrphaned(this.ToRelativePath(path));
                     continue;
                 }
@@ -683,6 +699,7 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                         this.run.Report.DayFileDeleted();
                         break;
                     case DeleteResult.Changed:
+                        this.options.Logger.DayFileChangedDuringRun(dayFile.Path);
                         this.run.Report.DayFileChangedDuringRun();
                         break;
                     default:
