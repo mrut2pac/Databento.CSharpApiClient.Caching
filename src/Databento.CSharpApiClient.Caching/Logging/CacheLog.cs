@@ -29,11 +29,11 @@ namespace Databento.CSharpApiClient.Caching.Logging
         [LoggerMessage(EventId = 1001, Level = LogLevel.Debug, Message = "Serving {Schema} of {Dataset} for {Symbols}, {StartUtc:yyyy-MM-ddTHH:mm:ssZ} to {EndUtc:yyyy-MM-ddTHH:mm:ssZ}, cache mode {CacheMode} ...")]
         private static partial void TimeseriesRequested(ILogger logger, string schema, string dataset, string symbols, DateTime startUtc, DateTime endUtc, CacheMode cacheMode);
 
-        [LoggerMessage(EventId = 1002, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} served from its day file {Path}, {RecordCount} records")]
-        public static partial void ServedFromDayFile(this ILogger logger, string symbol, DateTime day, string schema, string path, int recordCount);
+        [LoggerMessage(EventId = 1002, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} served from {File}, {RecordCount} records")]
+        public static partial void ServedFromDayFile(this ILogger logger, string symbol, DateTime day, string schema, string file, int recordCount);
 
-        [LoggerMessage(EventId = 1003, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} served from the archive file {Path}, {RecordCount} records")]
-        public static partial void ServedFromArchive(this ILogger logger, string symbol, DateTime day, string schema, string path, int recordCount);
+        [LoggerMessage(EventId = 1003, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} served from {File}, {RecordCount} records")]
+        public static partial void ServedFromArchive(this ILogger logger, string symbol, DateTime day, string schema, string file, int recordCount);
 
         [LoggerMessage(EventId = 1004, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} of {Dataset} is not cached")]
         public static partial void NotCached(this ILogger logger, string symbol, DateTime day, string schema, string dataset);
@@ -65,17 +65,17 @@ namespace Databento.CSharpApiClient.Caching.Logging
         [LoggerMessage(EventId = 1013, Level = LogLevel.Warning, Message = "Databento refused {Schema} of {Dataset} for {SymbolCount} symbol(s): {Error} None of them was listed, so they are served with no records")]
         public static partial void RefusedNoneListed(this ILogger logger, string schema, string dataset, int symbolCount, string error);
 
-        [LoggerMessage(EventId = 1014, Level = LogLevel.Debug, Message = "Saved {Symbol} {Day:yyyy-MM-dd} {Schema} with {RecordCount} records as {Path}")]
-        public static partial void Saved(this ILogger logger, string symbol, DateTime day, string schema, int recordCount, string path);
+        [LoggerMessage(EventId = 1014, Level = LogLevel.Debug, Message = "Saved {Symbol} {Day:yyyy-MM-dd} {Schema} with {RecordCount} records as {File}")]
+        public static partial void Saved(this ILogger logger, string symbol, DateTime day, string schema, int recordCount, string file);
 
-        [LoggerMessage(EventId = 1015, Level = LogLevel.Debug, Message = "Kept the day file {Path} already there; the {RecordCount} records of {Symbol} {Day:yyyy-MM-dd} {Schema} are not saved over it")]
-        public static partial void DayFileKept(this ILogger logger, string path, int recordCount, string symbol, DateTime day, string schema);
+        [LoggerMessage(EventId = 1015, Level = LogLevel.Debug, Message = "Kept the day file {File} already there; the {RecordCount} records of {Symbol} {Day:yyyy-MM-dd} {Schema} are not saved over it")]
+        public static partial void DayFileKept(this ILogger logger, string file, int recordCount, string symbol, DateTime day, string schema);
 
         [LoggerMessage(EventId = 1016, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} is served but not saved: the day is not final ({Reason})")]
         public static partial void NotFinal(this ILogger logger, string symbol, DateTime day, string schema, string reason);
 
-        [LoggerMessage(EventId = 1017, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} answered no records and is saved as empty as {Path}: {Reason}")]
-        public static partial void EmptyDaySaved(this ILogger logger, string symbol, DateTime day, string schema, string path, string reason);
+        [LoggerMessage(EventId = 1017, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} answered no records and is saved as empty as {File}: {Reason}")]
+        public static partial void EmptyDaySaved(this ILogger logger, string symbol, DateTime day, string schema, string file, string reason);
 
         [LoggerMessage(EventId = 1018, Level = LogLevel.Debug, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} answered no records and is not saved: {Reason}")]
         public static partial void EmptyDayNotSaved(this ILogger logger, string symbol, DateTime day, string schema, string reason);
