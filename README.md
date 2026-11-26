@@ -1,6 +1,8 @@
 # Databento.CSharpApiClient.Caching
 
 [![NuGet](https://img.shields.io/nuget/v/Databento.CSharpApiClient.Caching.svg)](https://www.nuget.org/packages/Databento.CSharpApiClient.Caching)
+[![CI](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/LICENSE)
 
 A disk cache and Parquet archive for [Databento.CSharpApiClient](https://github.com/mrut2pac/Databento.CSharpApiClient), so each day of Databento data is paid for once.
 
@@ -28,7 +30,7 @@ using Databento.CSharpApiClient.DataModel;
 
 using CachedDatabentoClient client = new CachedDatabentoClient(new CachedDatabentoClientOptions
 {
-    Databento = new DatabentoOptions { ApiKey = "YOUR_API_KEY" },
+    Databento = new DatabentoOptions { ApiKey = Environment.GetEnvironmentVariable("DATABENTO_API_KEY") },
     CacheRoot = @"D:\MarketData\Databento",
 });
 
@@ -134,7 +136,7 @@ ILogger logger = loggerFactory.CreateLogger("Databento.Cache");
 
 using CachedDatabentoClient client = new CachedDatabentoClient(new CachedDatabentoClientOptions
 {
-    Databento = new DatabentoOptions { ApiKey = "YOUR_API_KEY" },
+    Databento = new DatabentoOptions { ApiKey = Environment.GetEnvironmentVariable("DATABENTO_API_KEY") },
     CacheRoot = @"D:\MarketData\Databento",
     Logger = logger,
 });

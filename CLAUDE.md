@@ -15,7 +15,7 @@ tests/
   Databento.CSharpApiClient.Caching.UnitTests/  ← deterministic, no network
   Databento.CSharpApiClient.Caching.IntegrationTests/  ← live Databento, costs money; Inconclusive without DATABENTO_API_KEY
 .github/workflows/ci.yml                        ← CI: build + unit tests on every push/PR
-.github/workflows/publish.yml                   ← packs and pushes to NuGet.org on a v* tag
+.github/workflows/publish.yml                   ← packs and pushes to NuGet.org on a v* tag, then creates the tag's GitHub Release from its CHANGELOG section
 ```
 
 - **The client comes from NuGet**, as for any of its users (`PackageReference`, not a project reference). A client feature the package needs ships in a client release first, and the package then moves to that version.
