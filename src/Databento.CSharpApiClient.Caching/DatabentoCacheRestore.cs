@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Databento.CSharpApiClient.Caching.Archive;
 using Databento.CSharpApiClient.Caching.Backup;
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 
 namespace Databento.CSharpApiClient.Caching
 {
@@ -45,6 +46,7 @@ namespace Databento.CSharpApiClient.Caching
                 DryRun = options.DryRun,
                 DryRunFolder = options.DryRunFolder,
                 TimeProvider = options.TimeProvider,
+                Logger = NonThrowingLogger.Wrap(options.Logger),
             };
 
             ArgumentException.ThrowIfNullOrEmpty(this.options.CacheRoot, nameof(options));
@@ -85,64 +87,21 @@ namespace Databento.CSharpApiClient.Caching
         /// <exception cref="IOException">The store cannot be read, or a file cannot be moved into the cache; during the swap the marker stays</exception>
         public async Task<CacheRestoreReport> RestoreAsync(string backupName, CancellationToken cancellationToken = default)
         {
-            // the name becomes a folder name in the staging and dry run folders
-            if(!BackupName.IsValid(backupName))
+            LoggedRefusal refusal = new LoggedRefusal();
+            try
             {
-                throw new ArgumentException(Invariant($"{backupName} is not a backup's name (yyyyMMddTHHmmss, UTC)."), nameof(backupName));
+                this.options.Logger.RestoreStarted(this.options.CacheRoot, backupName, this.options.Store, this.options.ExistingFiles, this.options.DryRun);
+                return await this.RunRestoreAsync(backupName, refusal, cancellationToken).ConfigureAwait(false);
             }
-
-            IReadOnlyList<string> backups = await this.options.Store.ListAsync(cancellationToken).ConfigureAwait(false);
-            if(!backups.Contains(backupName, StringComparer.Ordinal))
+            catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
             {
-                throw new ArgumentException(Invariant($"{this.options.Store.Location} holds no backup named {backupName}; it holds {(backups.Count == 0 ? "none" : string.Join(", ", backups))}."), nameof(backupName));
+                this.options.Logger.RestoreCanceled(this.options.CacheRoot, backupName);
+                throw;
             }
-
-            if(this.options.DryRun)
+            catch(Exception ex) when(!refusal.Is(ex))
             {
-                return await this.DryRunAsync(backupName, cancellationToken).ConfigureAwait(false);
-            }
-
-            this.ThrowIfInUse();
-            Directory.CreateDirectory(this.options.CacheRoot);
-            using(CacheRootLock.Take(this.options.CacheRoot, "the restore"))
-            {
-                // a marker left by a stopped restore stays until a restore finishes, since the cache it guards may be half swapped
-                bool markerWasLeft = CacheRestoreMarker.Exists(this.options.CacheRoot);
-                string restoreDirectory = Path.Combine(this.options.StagingFolder, backupName + RestoreDirectorySuffix);
-                DateTime startUtc = this.options.TimeProvider.GetUtcNow().UtcDateTime;
-                string movedAsideFolder = this.GetMovedAsideFolder(startUtc);
-                BackupManifest manifest;
-                try
-                {
-                    CacheRestoreMarker.Write(this.options.CacheRoot, backupName, startUtc);
-
-                    // a client started before the marker was written would not have seen it
-                    this.ThrowIfInUse();
-                    this.DeleteLeftRestoreDirectories();
-                    Directory.CreateDirectory(restoreDirectory);
-                    manifest = await this.UnpackCheckedAsync(backupName, restoreDirectory, cancellationToken).ConfigureAwait(false);
-                    if(movedAsideFolder != null && Path.Exists(movedAsideFolder))
-                    {
-                        throw new IOException(Invariant($"{movedAsideFolder} already exists, so the cache's files cannot be moved aside into it; restore again a second later."));
-                    }
-                }
-                catch
-                {
-                    TryDeleteDirectory(restoreDirectory);
-                    if(!markerWasLeft)
-                    {
-                        TryDeleteMarker(this.options.CacheRoot);
-                    }
-
-                    throw;
-                }
-
-                CacheRestoreReport report = this.SwapIn(backupName, restoreDirectory, manifest, movedAsideFolder);
-
-                // the cache is whole, so it may be used again; what is left in staging is the next restore's to delete
-                CacheRestoreMarker.Delete(this.options.CacheRoot);
-                TryDeleteDirectory(restoreDirectory);
-                return report;
+                this.options.Logger.RestoreFailed(this.options.CacheRoot, backupName, ex);
+                throw;
             }
         }
 
@@ -158,6 +117,77 @@ namespace Databento.CSharpApiClient.Caching
             catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
             {
                 // the next restore deletes what is left in the staging folder
+            }
+        }
+
+        /// <summary>
+        /// Restores the cache root from a backup, as <see cref="RestoreAsync"/> says
+        /// </summary>
+        /// <param name="backupName">The backup's name</param>
+        /// <param name="refusal">Notes the refusal thrown, logged where it is thrown</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        private async Task<CacheRestoreReport> RunRestoreAsync(string backupName, LoggedRefusal refusal, CancellationToken cancellationToken)
+        {
+            // the name becomes a folder name in the staging and dry run folders
+            if(!BackupName.IsValid(backupName))
+            {
+                throw this.Refuse(refusal, backupName, new ArgumentException(Invariant($"{backupName} is not a backup's name (yyyyMMddTHHmmss, UTC)."), nameof(backupName)));
+            }
+
+            IReadOnlyList<string> backups = await this.options.Store.ListAsync(cancellationToken).ConfigureAwait(false);
+            if(!backups.Contains(backupName, StringComparer.Ordinal))
+            {
+                throw this.Refuse(refusal, backupName, new ArgumentException(Invariant($"{this.options.Store.Location} holds no backup named {backupName}; it holds {(backups.Count == 0 ? "none" : string.Join(", ", backups))}."), nameof(backupName)));
+            }
+
+            if(this.options.DryRun)
+            {
+                return await this.DryRunAsync(backupName, cancellationToken).ConfigureAwait(false);
+            }
+
+            this.ThrowIfInUse(refusal, backupName);
+            Directory.CreateDirectory(this.options.CacheRoot);
+            using(this.TakeLock(refusal, backupName))
+            {
+                // a marker left by a stopped restore stays until a restore finishes, since the cache it guards may be half swapped
+                bool markerWasLeft = CacheRestoreMarker.Exists(this.options.CacheRoot);
+                string restoreDirectory = Path.Combine(this.options.StagingFolder, backupName + RestoreDirectorySuffix);
+                DateTime startUtc = this.options.TimeProvider.GetUtcNow().UtcDateTime;
+                string movedAsideFolder = this.GetMovedAsideFolder(startUtc);
+                BackupManifest manifest;
+                try
+                {
+                    CacheRestoreMarker.Write(this.options.CacheRoot, backupName, startUtc);
+
+                    // a client started before the marker was written would not have seen it
+                    this.ThrowIfInUse(refusal, backupName);
+                    this.DeleteLeftRestoreDirectories();
+                    Directory.CreateDirectory(restoreDirectory);
+                    manifest = await this.UnpackCheckedAsync(backupName, restoreDirectory, cancellationToken).ConfigureAwait(false);
+                    if(movedAsideFolder != null && Path.Exists(movedAsideFolder))
+                    {
+                        throw this.Refuse(refusal, backupName, new IOException(Invariant($"{movedAsideFolder} already exists, so the cache's files cannot be moved aside into it; restore again a second later.")));
+                    }
+                }
+                catch
+                {
+                    TryDeleteDirectory(restoreDirectory);
+                    if(!markerWasLeft)
+                    {
+                        TryDeleteMarker(this.options.CacheRoot);
+                    }
+
+                    throw;
+                }
+
+                this.options.Logger.SwappingIn(backupName, this.options.CacheRoot, this.options.ExistingFiles);
+                CacheRestoreReport report = this.SwapIn(backupName, restoreDirectory, manifest, movedAsideFolder);
+
+                // the cache is whole, so it may be used again; what is left in staging is the next restore's to delete
+                CacheRestoreMarker.Delete(this.options.CacheRoot);
+                TryDeleteDirectory(restoreDirectory);
+                this.options.Logger.Restored(this.options.CacheRoot, backupName, report.FileCount, report.FilesDeleted, report.DayFilesKept, report.FilesMovedAside);
+                return report;
             }
         }
 
@@ -210,6 +240,7 @@ namespace Databento.CSharpApiClient.Caching
             if(Directory.Exists(restoreDirectory))
             {
                 Directory.Delete(restoreDirectory, recursive: true);
+                this.options.Logger.EarlierDryRunDeleted(restoreDirectory);
             }
 
             Directory.CreateDirectory(restoreDirectory);
@@ -220,15 +251,21 @@ namespace Databento.CSharpApiClient.Caching
                 // the cache may change under the count, since it may be in use
                 string movedAsideFolder = this.GetMovedAsideFolder(this.options.TimeProvider.GetUtcNow().UtcDateTime);
                 int cleared = Directory.Exists(this.options.CacheRoot) ? this.ListClearedEntries().Sum(CountFiles) : 0;
+                CacheRestoreReport report;
                 if(this.options.ExistingFiles != ExistingCacheFiles.Keep)
                 {
-                    return new CacheRestoreReport(backupName, manifest.FileCount, manifest.TotalBytes, dryRun: true, restoreDirectory,
+                    report = new CacheRestoreReport(backupName, manifest.FileCount, manifest.TotalBytes, dryRun: true, restoreDirectory,
                         this.options.ExistingFiles == ExistingCacheFiles.Delete ? cleared : 0, 0, this.options.ExistingFiles == ExistingCacheFiles.MoveAside ? cleared : 0, movedAsideFolder);
                 }
+                else
+                {
+                    int deleted = Directory.Exists(this.options.CacheRoot) ? Directory.EnumerateFiles(this.options.CacheRoot, "*", SearchOption.AllDirectories).Count(IsArchiveOrTemporaryFile) : 0;
+                    int kept = manifest.Files.Select(file => ToPath(this.options.CacheRoot, file)).Count(path => IsDayFile(path) && File.Exists(path));
+                    report = new CacheRestoreReport(backupName, manifest.FileCount, manifest.TotalBytes, dryRun: true, restoreDirectory, deleted, kept, 0, null);
+                }
 
-                int deleted = Directory.Exists(this.options.CacheRoot) ? Directory.EnumerateFiles(this.options.CacheRoot, "*", SearchOption.AllDirectories).Count(IsArchiveOrTemporaryFile) : 0;
-                int kept = manifest.Files.Select(file => ToPath(this.options.CacheRoot, file)).Count(path => IsDayFile(path) && File.Exists(path));
-                return new CacheRestoreReport(backupName, manifest.FileCount, manifest.TotalBytes, dryRun: true, restoreDirectory, deleted, kept, 0, null);
+                this.options.Logger.DryRunDone(backupName, restoreDirectory, report.FilesDeleted, report.DayFilesKept, report.FilesMovedAside);
+                return report;
             }
             catch
             {
@@ -237,11 +274,37 @@ namespace Databento.CSharpApiClient.Caching
             }
         }
 
-        private void ThrowIfInUse()
+        private void ThrowIfInUse(LoggedRefusal refusal, string backupName)
         {
             if(this.options.InUseChecker?.IsInUse() == true)
             {
-                throw new InvalidOperationException(Invariant($"{this.options.CacheRoot} is in use, as its in-use checker reports, so it was not restored; stop what uses it and restore again."));
+                throw this.Refuse(refusal, backupName, new InvalidOperationException(Invariant($"{this.options.CacheRoot} is in use, as its in-use checker reports, so it was not restored; stop what uses it and restore again.")));
+            }
+        }
+
+        /// <summary>
+        /// Logs a refusal about to be thrown and notes it, so it is not logged again as a failure
+        /// </summary>
+        /// <returns>The refusal, to throw</returns>
+        private Exception Refuse(LoggedRefusal refusal, string backupName, Exception exception)
+        {
+            this.options.Logger.RestoreRefused(this.options.CacheRoot, backupName, exception.Message);
+            return refusal.Note(exception);
+        }
+
+        /// <summary>
+        /// Takes the cache root's lock, refusing when another run holds it
+        /// </summary>
+        private CacheRootLock TakeLock(LoggedRefusal refusal, string backupName)
+        {
+            try
+            {
+                return CacheRootLock.Take(this.options.CacheRoot, "the restore");
+            }
+            catch(InvalidOperationException ex)
+            {
+                this.Refuse(refusal, backupName, ex);
+                throw;
             }
         }
 
@@ -251,6 +314,7 @@ namespace Databento.CSharpApiClient.Caching
         /// </summary>
         private async Task<BackupManifest> UnpackCheckedAsync(string backupName, string restoreDirectory, CancellationToken cancellationToken)
         {
+            this.options.Logger.Unpacking(backupName, restoreDirectory);
             string expectedSha256 = await this.options.Store.GetSha256Async(backupName, cancellationToken).ConfigureAwait(false);
             Stream tar = await this.options.Store.OpenReadAsync(backupName, cancellationToken).ConfigureAwait(false);
             BackupManifest manifest;
@@ -275,6 +339,7 @@ namespace Databento.CSharpApiClient.Caching
                 throw new InvalidDataException(Invariant($"The backup {backupName} holds no {CacheMetadata.FileName}, so it is no backup of a cache this package wrote."));
             }
 
+            this.options.Logger.BackupChecked(backupName, manifest.FileCount, manifest.TotalBytes);
             return manifest;
         }
 
@@ -389,6 +454,7 @@ namespace Databento.CSharpApiClient.Caching
                 if(BackupName.IsValid(Path.GetFileName(directory)[..^RestoreDirectorySuffix.Length]))
                 {
                     Directory.Delete(directory, recursive: true);
+                    this.options.Logger.RestoreFolderDeleted(directory);
                 }
             }
         }

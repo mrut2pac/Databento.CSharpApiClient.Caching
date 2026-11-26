@@ -10,7 +10,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 using Databento.CSharpApiClient.DataModel.Batch;
+
+using Microsoft.Extensions.Logging;
 
 namespace Databento.CSharpApiClient.Caching.Client
 {
@@ -58,6 +61,8 @@ namespace Databento.CSharpApiClient.Caching.Client
 
         private readonly BatchIngestion ingestion;
 
+        private readonly ILogger logger;
+
         public BatchJobs(CachedDatabentoClientOptions options, DatabentoJsonClient jsonClient, SymbolDayStore store, DatasetAvailability availability, BatchIngestion ingestion)
         {
             this.options = options;
@@ -65,6 +70,7 @@ namespace Databento.CSharpApiClient.Caching.Client
             this.store = store;
             this.availability = availability;
             this.ingestion = ingestion;
+            this.logger = options.Logger;
         }
 
         public async Task<BatchReport> RunAsync(string dataset, string schemaName, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, decimal maxCostUsd, CancellationToken cancellationToken)
@@ -121,6 +127,7 @@ namespace Databento.CSharpApiClient.Caching.Client
             }
 
             BatchCounts counts = await schema.IngestAsync(this.ingestion, folder, cancellationToken).ConfigureAwait(false);
+            this.logger.BatchFolderIngested(path, counts.Saved, counts.SavedEmpty, counts.AlreadyCached, counts.DaysLeftOut.Count);
             return ToReport(counts, Array.Empty<string>(), Array.Empty<string>(), 0m);
         }
 
@@ -160,6 +167,7 @@ namespace Databento.CSharpApiClient.Caching.Client
             Dictionary<string, List<DateTime>> missing = await this.FindMissingAsync(schema, dataset, symbols.Distinct(StringComparer.Ordinal).ToList(), startUtc, endUtc, counts, cancellationToken).ConfigureAwait(false);
             if(missing.Count == 0)
             {
+                this.logger.BatchNothingMissing(schema.Name, dataset);
                 return ToReport(counts, Array.Empty<string>(), Array.Empty<string>(), 0m);
             }
 
@@ -173,6 +181,11 @@ namespace Databento.CSharpApiClient.Caching.Client
                 symbol.Value.RemoveAll(day => !dayAvailability.IsFinal(day));
             }
 
+            if(this.logger.IsEnabled(LogLevel.Debug))
+            {
+                this.logger.BatchDaysMissing(missing.Values.Sum(days => days.Count), schema.Name, dataset, counts.AlreadyCached, counts.DaysLeftOut.Count);
+            }
+
             // a run of consecutive days per query, so no cached or unfinished day between two missing ones is bought; symbols in ordinal
             // order, so the same call chunks them the same way again
             List<BatchJobRequest> queries = missing
@@ -183,6 +196,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                 .ToList();
             if(queries.Count == 0)
             {
+                this.logger.BatchNothingMissing(schema.Name, dataset);
                 return ToReport(counts, Array.Empty<string>(), Array.Empty<string>(), 0m);
             }
 
@@ -197,6 +211,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                     if(!reusedJobIds.Contains(match.JobId, StringComparer.Ordinal))
                     {
                         reusedJobIds.Add(match.JobId);
+                        this.logger.BatchJobReused(match.JobId, schema.Name, dataset);
                     }
                 }
                 else
@@ -207,21 +222,31 @@ namespace Databento.CSharpApiClient.Caching.Client
 
             // every new job is priced, and all refused together above the ceiling, before any is submitted
             decimal estimate = 0m;
+            List<decimal> estimates = new List<decimal>();
             foreach(BatchJobRequest query in newQueries)
             {
-                estimate += (decimal)await this.jsonClient.GetCostAsync(query.Dataset, query.Symbols, query.Schema, query.StartUtc, query.EndUtc, cancellationToken).ConfigureAwait(false);
+                estimates.Add((decimal)await this.jsonClient.GetCostAsync(query.Dataset, query.Symbols, query.Schema, query.StartUtc, query.EndUtc, cancellationToken).ConfigureAwait(false));
+                estimate += estimates[^1];
             }
 
             if(estimate > maxCostUsd)
             {
+                this.logger.BatchJobsTooExpensive(newQueries.Count, estimate, maxCostUsd);
                 throw new BatchJobTooExpensiveException(estimate, maxCostUsd);
             }
 
-            List<string> newJobIds = new List<string>();
-            foreach(BatchJobRequest query in newQueries)
+            if(newQueries.Count > 0)
             {
+                this.logger.BatchJobsPriced(newQueries.Count, estimate, maxCostUsd);
+            }
+
+            List<string> newJobIds = new List<string>();
+            for(int i = 0; i < newQueries.Count; ++i)
+            {
+                BatchJobRequest query = newQueries[i];
                 BatchJob submitted = await this.jsonClient.SubmitBatchJobAsync(query, cancellationToken).ConfigureAwait(false);
                 newJobIds.Add(submitted.JobId);
+                this.logger.BatchJobSubmitted(submitted.JobId, schema.Name, dataset, query.Symbols, query.StartUtc, query.EndUtc, estimates[i]);
             }
 
             // every job is downloaded even when one fails, so no paid job is left behind; the failures are thrown together after
@@ -241,6 +266,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                 }
                 catch(Exception ex) when(ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
+                    this.logger.BatchJobFailed(jobId, ex);
                     failures.Add(ex);
                 }
             }
@@ -374,6 +400,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                 BatchJob job = await this.jsonClient.GetBatchJobDetailsAsync(jobId, cancellationToken).ConfigureAwait(false);
                 if(string.Equals(job.State, BatchJobStates.Done, StringComparison.Ordinal))
                 {
+                    this.logger.BatchJobDone(jobId);
                     return job;
                 }
 
@@ -396,7 +423,8 @@ namespace Databento.CSharpApiClient.Caching.Client
             Directory.CreateDirectory(folder);
             try
             {
-                foreach(BatchFile file in await this.jsonClient.ListBatchFilesAsync(jobId, cancellationToken).ConfigureAwait(false))
+                BatchFile[] files = await this.jsonClient.ListBatchFilesAsync(jobId, cancellationToken).ConfigureAwait(false);
+                foreach(BatchFile file in files)
                 {
                     string path = Path.Combine(folder, Path.GetFileName(file.Filename));
                     using(IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
@@ -431,7 +459,9 @@ namespace Databento.CSharpApiClient.Caching.Client
                     throw new InvalidDataException(Invariant($"Batch job {jobId} holds {batch.Schema}, not {schema.Name}."));
                 }
 
-                return await schema.IngestAsync(this.ingestion, batch, cancellationToken).ConfigureAwait(false);
+                BatchCounts counts = await schema.IngestAsync(this.ingestion, batch, cancellationToken).ConfigureAwait(false);
+                this.logger.BatchJobIngested(jobId, files.Length, counts.Saved, counts.SavedEmpty, counts.AlreadyCached, counts.DaysLeftOut.Count);
+                return counts;
             }
             finally
             {

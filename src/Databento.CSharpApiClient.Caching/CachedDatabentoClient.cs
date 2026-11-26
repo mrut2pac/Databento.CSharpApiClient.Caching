@@ -3,7 +3,10 @@ using System;
 using Databento.CSharpApiClient.Caching.Archive;
 using Databento.CSharpApiClient.Caching.Cache;
 using Databento.CSharpApiClient.Caching.Client;
+using Databento.CSharpApiClient.Caching.Logging;
 using Databento.CSharpApiClient.Transport;
+
+using Microsoft.Extensions.Logging;
 
 namespace Databento.CSharpApiClient.Caching
 {
@@ -33,6 +36,8 @@ namespace Databento.CSharpApiClient.Caching
 
         private readonly BatchJobs batchJobs;
 
+        private readonly ILogger logger;
+
         /// <summary>
         /// Opens a cache
         /// </summary>
@@ -54,10 +59,11 @@ namespace Databento.CSharpApiClient.Caching
             CacheRestoreMarker.ThrowIfPresent(settings.CacheRoot, "The cached client");
             CacheMetadata.Read(settings.CacheRoot);
 
+            this.logger = settings.Logger;
             this.jsonClient = new DatabentoJsonClient(settings.Databento, transport);
             this.dbnClient = settings.Transport == DatabentoTransport.Dbn ? new DatabentoClient(settings.Databento, transport) : null;
-            ArchiveCatalog catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable);
-            SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, catalog);
+            ArchiveCatalog catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable, settings.Logger);
+            SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, catalog, settings.Logger);
             DatasetAvailability availability = new DatasetAvailability();
             this.timeseries = new CachedTimeseries(settings, this.jsonClient, this.dbnClient, store, availability);
             this.batchJobs = new BatchJobs(settings, this.jsonClient, store, availability, new BatchIngestion(settings, this.jsonClient, store));
@@ -128,11 +134,13 @@ namespace Databento.CSharpApiClient.Caching
                 BatchPollInterval = options.BatchPollInterval,
                 BatchDownloadFolder = options.BatchDownloadFolder,
                 TimeProvider = options.TimeProvider,
+                Logger = NonThrowingLogger.Wrap(options.Logger),
             };
         }
 
         private void OnArchiveFileUnreadable(string path, Exception exception)
         {
+            this.logger.ArchiveFileUnreadable(path, ArchiveCatalog.UnreadableRecheckInterval, exception);
             try
             {
                 this.ArchiveFileUnreadable?.Invoke(this, new ArchiveFileUnreadableEventArgs(path, exception));

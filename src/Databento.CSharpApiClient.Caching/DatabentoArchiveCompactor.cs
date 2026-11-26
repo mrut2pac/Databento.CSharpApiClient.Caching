@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 using Databento.CSharpApiClient.Caching.Archive;
 using Databento.CSharpApiClient.Caching.Cache;
 using Databento.CSharpApiClient.Caching.Compaction;
+using Databento.CSharpApiClient.Caching.Logging;
+
+using Microsoft.Extensions.Logging;
 
 namespace Databento.CSharpApiClient.Caching
 {
@@ -81,40 +84,16 @@ namespace Databento.CSharpApiClient.Caching
         /// <exception cref="InvalidDataException">The root's <c>metadata.json</c> is not one this package accepts</exception>
         public async Task<ArchiveCompactionReport> CompactAsync(CancellationToken cancellationToken = default)
         {
-            CacheRestoreMarker.ThrowIfPresent(this.options.CacheRoot, "the compaction");
-            if(!Directory.Exists(this.options.CacheRoot))
+            LoggedRefusal refusal = new LoggedRefusal();
+            try
             {
-                throw new DirectoryNotFoundException(Invariant($"The cache root {this.options.CacheRoot} does not exist."));
+                return await this.RunCompactionAsync(refusal, cancellationToken).ConfigureAwait(false);
             }
-
-            ArchiveCompactionReport report = new ArchiveCompactionReport(this.options.DryRun);
-            CacheMetadata metadata = CacheMetadata.Read(this.options.CacheRoot);
-            if(metadata == null)
+            catch(Exception ex) when(!refusal.Is(ex) && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
             {
-                // a lock file a killed run left, which only Linux leaves behind, is no file of a cache
-                if(Directory.EnumerateFileSystemEntries(this.options.CacheRoot).Any(entry => !CacheRootLock.IsLockFile(entry)))
-                {
-                    throw new InvalidOperationException(Invariant($"{this.options.CacheRoot} holds files but no {CacheMetadata.FileName}, so it is no cache this package wrote."));
-                }
-
-                return report;
+                this.options.Logger.CompactionFailed(this.options.CacheRoot, ex);
+                throw;
             }
-
-            using(CacheRootLock.Take(this.options.CacheRoot, "the compaction"))
-            {
-                // a restore that started before the lock was taken
-                CacheRestoreMarker.ThrowIfPresent(this.options.CacheRoot, "the compaction");
-                try
-                {
-                    await this.RunAsync(metadata.DayCutoff, report, cancellationToken).ConfigureAwait(false);
-                }
-                catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
-                {
-                    report.RunCanceled();
-                }
-            }
-
-            return report;
         }
 
         private static ArchiveCompactorOptions Copy(ArchiveCompactorOptions options)
@@ -136,7 +115,60 @@ namespace Databento.CSharpApiClient.Caching
                 MaxParallelGroups = options.MaxParallelGroups,
                 TimeProvider = options.TimeProvider,
                 Progress = options.Progress,
+                Logger = NonThrowingLogger.Wrap(options.Logger),
             };
+        }
+
+        /// <summary>
+        /// Runs the compaction, as <see cref="CompactAsync"/> says, logging each refusal where it is thrown
+        /// </summary>
+        /// <param name="refusal">Notes the refusal thrown</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        private async Task<ArchiveCompactionReport> RunCompactionAsync(LoggedRefusal refusal, CancellationToken cancellationToken)
+        {
+            this.ThrowIfRestoring(refusal);
+            if(!Directory.Exists(this.options.CacheRoot))
+            {
+                throw this.Refuse(refusal, new DirectoryNotFoundException(Invariant($"The cache root {this.options.CacheRoot} does not exist.")));
+            }
+
+            ArchiveCompactionReport report = new ArchiveCompactionReport(this.options.DryRun);
+            CacheMetadata metadata = CacheMetadata.Read(this.options.CacheRoot);
+            if(metadata == null)
+            {
+                // a lock file a killed run left, which only Linux leaves behind, is no file of a cache
+                if(Directory.EnumerateFileSystemEntries(this.options.CacheRoot).Any(entry => !CacheRootLock.IsLockFile(entry)))
+                {
+                    throw this.Refuse(refusal, new InvalidOperationException(Invariant($"{this.options.CacheRoot} holds files but no {CacheMetadata.FileName}, so it is no cache this package wrote.")));
+                }
+
+                return report;
+            }
+
+            using(this.TakeLock(refusal))
+            {
+                // a restore that started before the lock was taken
+                this.ThrowIfRestoring(refusal);
+                try
+                {
+                    await this.RunAsync(metadata.DayCutoff, report, cancellationToken).ConfigureAwait(false);
+                }
+                catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+                {
+                    report.RunCanceled();
+                }
+            }
+
+            if(report.Canceled)
+            {
+                this.options.Logger.CompactionCanceled(this.options.CacheRoot, report.GroupsCompacted);
+            }
+            else if(this.options.Logger.IsEnabled(LogLevel.Information))
+            {
+                this.options.Logger.CompactionFinished(this.options.CacheRoot, report.GroupsCompacted, report.FailedGroups.Count, report.DayFilesAbsorbed, report.DayFilesDeleted, report.FilesLeft.Count);
+            }
+
+            return report;
         }
 
         /// <summary>
@@ -195,7 +227,50 @@ namespace Databento.CSharpApiClient.Caching
             }
             catch(Exception ex) when(ex is not OperationCanceledException)
             {
+                run.Options.Logger.GroupFailed(group.Request.DisplayName, ex.Message, ex);
                 run.Report.GroupFailed(group.Request.DisplayName, ex);
+            }
+        }
+
+        /// <summary>
+        /// Logs a refusal about to be thrown and notes it, so it is not logged again as a failure
+        /// </summary>
+        /// <returns>The refusal, to throw</returns>
+        private Exception Refuse(LoggedRefusal refusal, Exception exception)
+        {
+            this.options.Logger.CompactionRefused(this.options.CacheRoot, exception.Message);
+            return refusal.Note(exception);
+        }
+
+        /// <summary>
+        /// Refuses a cache being restored, or one a restore stopped before it finished
+        /// </summary>
+        private void ThrowIfRestoring(LoggedRefusal refusal)
+        {
+            try
+            {
+                CacheRestoreMarker.ThrowIfPresent(this.options.CacheRoot, "the compaction");
+            }
+            catch(InvalidOperationException ex)
+            {
+                this.Refuse(refusal, ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Takes the cache root's lock, refusing when another run holds it
+        /// </summary>
+        private CacheRootLock TakeLock(LoggedRefusal refusal)
+        {
+            try
+            {
+                return CacheRootLock.Take(this.options.CacheRoot, "the compaction");
+            }
+            catch(InvalidOperationException ex)
+            {
+                this.Refuse(refusal, ex);
+                throw;
             }
         }
 
@@ -221,6 +296,7 @@ namespace Databento.CSharpApiClient.Caching
             await Parallel.ForEachAsync(this.EnumerateGroups(monthFolders, run), parallelOptions, async (group, groupCancellationToken) =>
             {
                 TellProgress(this.options.Progress, progress.StartGroup(group.Request.RelativeDirectory, group.Request.Group, group.Request.DayFiles.Count, this.options.TimeProvider.GetElapsedTime(startTimestamp)));
+                this.options.Logger.GroupStarted(group.Request.RelativeDirectory, group.Request.Group, group.Request.DayFiles.Count);
                 await CompactGroupAsync(group, run, groupCancellationToken).ConfigureAwait(false);
                 progress.EndGroup(group.Request.DayFiles.Count);
             }).ConfigureAwait(false);
@@ -297,6 +373,7 @@ namespace Databento.CSharpApiClient.Caching
                 }
             }
 
+            this.options.Logger.CompactionStarted(this.options.CacheRoot, this.options.CompactionMode, this.options.DryRun, groups, dayFiles);
             return new CompactionProgress(groups, dayFiles);
         }
 
@@ -394,7 +471,9 @@ namespace Databento.CSharpApiClient.Caching
             catch(Exception ex) when(ex is not OperationCanceledException)
             {
                 // a folder that cannot be listed fails alone, as a group does
-                run.Report.GroupFailed(Path.GetRelativePath(this.options.CacheRoot, monthFolder.Directory), ex);
+                string folder = Path.GetRelativePath(this.options.CacheRoot, monthFolder.Directory);
+                this.options.Logger.GroupFailed(folder, ex.Message, ex);
+                run.Report.GroupFailed(folder, ex);
                 return new List<ArchiveGroupRequest>();
             }
         }

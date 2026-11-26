@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Backup;
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 
 namespace Databento.CSharpApiClient.Caching
 {
@@ -46,6 +47,7 @@ namespace Databento.CSharpApiClient.Caching
                 Retention = options.Retention,
                 MaxBackupDayFiles = options.MaxBackupDayFiles,
                 TimeProvider = options.TimeProvider,
+                Logger = NonThrowingLogger.Wrap(options.Logger),
             };
 
             ArgumentException.ThrowIfNullOrEmpty(this.options.CacheRoot, nameof(options));
@@ -78,59 +80,21 @@ namespace Databento.CSharpApiClient.Caching
         /// </remarks>
         public async Task<CacheBackupReport> BackUpAsync(bool force = false, CancellationToken cancellationToken = default)
         {
-            // a half-restored cache must not become the newest backup and push a good one out
-            CacheRestoreMarker.ThrowIfPresent(this.options.CacheRoot, "the backup");
-            if(!Directory.Exists(this.options.CacheRoot))
+            LoggedRefusal refusal = new LoggedRefusal();
+            try
             {
-                throw new DirectoryNotFoundException(Invariant($"The cache root {this.options.CacheRoot} does not exist."));
+                this.options.Logger.BackupStarted(this.options.CacheRoot, this.options.Store);
+                return await this.RunBackupAsync(force, refusal, cancellationToken).ConfigureAwait(false);
             }
-
-            if(CacheMetadata.Read(this.options.CacheRoot) == null)
+            catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
             {
-                // an empty or wrongly mapped cache root would otherwise push the good backups out one run at a time
-                bool holdsFiles = Directory.EnumerateFileSystemEntries(this.options.CacheRoot).Any(entry => !CacheRootLock.IsLockFile(entry));
-                throw holdsFiles
-                    ? new InvalidOperationException(Invariant($"{this.options.CacheRoot} holds files but no {CacheMetadata.FileName}, so it is no cache this package wrote."))
-                    : new IOException(Invariant($"{this.options.CacheRoot} holds no files to back up."));
+                this.options.Logger.BackupCanceled(this.options.CacheRoot);
+                throw;
             }
-
-            using(CacheRootLock.Take(this.options.CacheRoot, "the backup"))
+            catch(Exception ex) when(!refusal.Is(ex))
             {
-                // a restore that started before the lock was taken
-                CacheRestoreMarker.ThrowIfPresent(this.options.CacheRoot, "the backup");
-
-                // unforced, the count stops past the limit, so a refusal does not walk a cache of millions of day files
-                int dayFiles = this.CountDayFiles(force ? int.MaxValue : (int)Math.Min((long)this.options.MaxBackupDayFiles + 1, int.MaxValue), cancellationToken);
-                if(dayFiles > this.options.MaxBackupDayFiles && !force)
-                {
-                    throw new InvalidOperationException(Invariant($"{this.options.CacheRoot} holds more than MaxBackupDayFiles ({this.options.MaxBackupDayFiles:N0}) day files, so it was not backed up: compact it first, or back it up as it is with force."));
-                }
-
-                DateTime startUtc = this.options.TimeProvider.GetUtcNow().UtcDateTime;
-                string name = BackupName.Format(startUtc);
-                BackupName.TryParse(name, out startUtc);
-                string tarPath = Path.Combine(this.options.StagingFolder, name + StagingExtension);
-                BackupManifest manifest;
-                try
-                {
-                    this.DeleteLeftStagingFiles();
-                    manifest = await BackupTar.WriteAsync(this.options.CacheRoot, tarPath, startUtc, cancellationToken).ConfigureAwait(false);
-                    string sha256 = await CheckAsync(tarPath, cancellationToken).ConfigureAwait(false);
-                    await this.options.Store.PutAsync(name, tarPath, sha256, cancellationToken).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // a tar that does not read back as written included: the store is left as it was
-                    TryDeleteFile(tarPath);
-                    throw;
-                }
-
-                // a store that copies rather than moves leaves the staged tar behind
-                TryDeleteFile(tarPath);
-
-                // the backup is in the store, so nothing after this fails it, a cancellation included
-                int oldBackupsDeleted = await this.DeleteOldBackupsAsync(name).ConfigureAwait(false);
-                return new CacheBackupReport(name, manifest.FileCount, manifest.TotalBytes, dayFiles, oldBackupsDeleted);
+                this.options.Logger.BackupFailed(this.options.CacheRoot, ex);
+                throw;
             }
         }
 
@@ -168,6 +132,118 @@ namespace Databento.CSharpApiClient.Caching
         }
 
         /// <summary>
+        /// Backs the cache root up, as <see cref="BackUpAsync"/> says, holding the root's lock
+        /// </summary>
+        /// <param name="force">Backs the cache up however many day files it holds</param>
+        /// <param name="refusal">Notes the refusal thrown, logged where it is thrown</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        private async Task<CacheBackupReport> RunBackupAsync(bool force, LoggedRefusal refusal, CancellationToken cancellationToken)
+        {
+            // a half-restored cache must not become the newest backup and push a good one out
+            this.ThrowIfRestoring(refusal);
+            if(!Directory.Exists(this.options.CacheRoot))
+            {
+                throw this.Refuse(refusal, new DirectoryNotFoundException(Invariant($"The cache root {this.options.CacheRoot} does not exist.")));
+            }
+
+            if(CacheMetadata.Read(this.options.CacheRoot) == null)
+            {
+                // an empty or wrongly mapped cache root would otherwise push the good backups out one run at a time
+                bool holdsFiles = Directory.EnumerateFileSystemEntries(this.options.CacheRoot).Any(entry => !CacheRootLock.IsLockFile(entry));
+                throw this.Refuse(refusal, holdsFiles
+                    ? new InvalidOperationException(Invariant($"{this.options.CacheRoot} holds files but no {CacheMetadata.FileName}, so it is no cache this package wrote."))
+                    : new IOException(Invariant($"{this.options.CacheRoot} holds no files to back up.")));
+            }
+
+            using(this.TakeLock(refusal))
+            {
+                // a restore that started before the lock was taken
+                this.ThrowIfRestoring(refusal);
+
+                // unforced, the count stops past the limit, so a refusal does not walk a cache of millions of day files
+                int dayFiles = this.CountDayFiles(force ? int.MaxValue : (int)Math.Min((long)this.options.MaxBackupDayFiles + 1, int.MaxValue), cancellationToken);
+                if(dayFiles > this.options.MaxBackupDayFiles && !force)
+                {
+                    throw this.Refuse(refusal, new InvalidOperationException(Invariant($"{this.options.CacheRoot} holds more than MaxBackupDayFiles ({this.options.MaxBackupDayFiles:N0}) day files, so it was not backed up: compact it first, or back it up as it is with force.")));
+                }
+
+                this.options.Logger.DayFilesCounted(dayFiles, this.options.CacheRoot);
+
+                DateTime startUtc = this.options.TimeProvider.GetUtcNow().UtcDateTime;
+                string name = BackupName.Format(startUtc);
+                BackupName.TryParse(name, out startUtc);
+                string tarPath = Path.Combine(this.options.StagingFolder, name + StagingExtension);
+                BackupManifest manifest;
+                try
+                {
+                    this.DeleteLeftStagingFiles();
+                    this.options.Logger.WritingTar(tarPath);
+                    manifest = await BackupTar.WriteAsync(this.options.CacheRoot, tarPath, startUtc, cancellationToken).ConfigureAwait(false);
+                    this.options.Logger.TarWritten(manifest.FileCount, manifest.TotalBytes);
+                    string sha256 = await CheckAsync(tarPath, cancellationToken).ConfigureAwait(false);
+                    this.options.Logger.StoringBackup(sha256, name, this.options.Store);
+                    await this.options.Store.PutAsync(name, tarPath, sha256, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // a tar that does not read back as written included: the store is left as it was
+                    TryDeleteFile(tarPath);
+                    throw;
+                }
+
+                // a store that copies rather than moves leaves the staged tar behind
+                TryDeleteFile(tarPath);
+
+                // the backup is in the store, so nothing after this fails it, a cancellation included
+                int oldBackupsDeleted = await this.DeleteOldBackupsAsync(name).ConfigureAwait(false);
+                this.options.Logger.BackupStored(name, this.options.Store, manifest.FileCount, manifest.TotalBytes, dayFiles, oldBackupsDeleted);
+                return new CacheBackupReport(name, manifest.FileCount, manifest.TotalBytes, dayFiles, oldBackupsDeleted);
+            }
+        }
+
+        /// <summary>
+        /// Logs a refusal about to be thrown and notes it, so it is not logged again as a failure
+        /// </summary>
+        /// <returns>The refusal, to throw</returns>
+        private Exception Refuse(LoggedRefusal refusal, Exception exception)
+        {
+            this.options.Logger.BackupRefused(this.options.CacheRoot, exception.Message);
+            return refusal.Note(exception);
+        }
+
+        /// <summary>
+        /// Refuses a cache being restored, or one a restore stopped before it finished
+        /// </summary>
+        private void ThrowIfRestoring(LoggedRefusal refusal)
+        {
+            try
+            {
+                CacheRestoreMarker.ThrowIfPresent(this.options.CacheRoot, "the backup");
+            }
+            catch(InvalidOperationException ex)
+            {
+                this.Refuse(refusal, ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Takes the cache root's lock, refusing when another run holds it
+        /// </summary>
+        private CacheRootLock TakeLock(LoggedRefusal refusal)
+        {
+            try
+            {
+                return CacheRootLock.Take(this.options.CacheRoot, "the backup");
+            }
+            catch(InvalidOperationException ex)
+            {
+                this.Refuse(refusal, ex);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Counts the day files anywhere under the cache root, stopping once the count reaches <paramref name="limit"/>
         /// </summary>
         private int CountDayFiles(int limit, CancellationToken cancellationToken)
@@ -195,6 +271,7 @@ namespace Databento.CSharpApiClient.Caching
             foreach(string file in Directory.EnumerateFiles(this.options.StagingFolder).Where(IsLeftBackupFile).ToList())
             {
                 File.Delete(file);
+                this.options.Logger.StagingTarDeleted(file);
             }
         }
 
@@ -210,9 +287,10 @@ namespace Databento.CSharpApiClient.Caching
             {
                 backups = await this.options.Store.ListAsync(CancellationToken.None).ConfigureAwait(false);
             }
-            catch(Exception)
+            catch(Exception ex)
             {
                 // the backup is in the store; the next run deletes what this one could not
+                this.options.Logger.RetentionListFailed(this.options.Store, ex.Message);
                 return 0;
             }
 
@@ -223,10 +301,12 @@ namespace Databento.CSharpApiClient.Caching
                 {
                     await this.options.Store.DeleteAsync(backup, CancellationToken.None).ConfigureAwait(false);
                     ++deleted;
+                    this.options.Logger.OldBackupDeleted(backup);
                 }
-                catch(Exception)
+                catch(Exception ex)
                 {
                     // left for the next run
+                    this.options.Logger.RetentionDeleteFailed(backup, ex.Message);
                 }
             }
 

@@ -8,7 +8,10 @@ using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Archive.Schemas;
 using Databento.CSharpApiClient.Caching.Cache;
+using Databento.CSharpApiClient.Caching.Logging;
 using Databento.CSharpApiClient.DataModel;
+
+using Microsoft.Extensions.Logging;
 
 namespace Databento.CSharpApiClient.Caching.Archive
 {
@@ -28,7 +31,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// How long an unreadable file is left out without reading it again, so a run asking for its days does not parse it each time, while
         /// one repaired in place is served again soon after
         /// </summary>
-        private static readonly TimeSpan UnreadableRecheckInterval = TimeSpan.FromMinutes(10);
+        public static readonly TimeSpan UnreadableRecheckInterval = TimeSpan.FromMinutes(10);
 
         private readonly TimeProvider clock;
 
@@ -36,6 +39,8 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// Told of each unreadable file once per UTC day, as the file stood when it failed
         /// </summary>
         private readonly Action<string, Exception> reportUnreadable;
+
+        private readonly ILogger logger;
 
         /// <summary>
         /// The indexes of the version last found for each folder and file name prefix; a version with other files, a new delta generation
@@ -53,13 +58,15 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// </summary>
         private long useCounter;
 
-        public ArchiveCatalog(TimeProvider clock, Action<string, Exception> reportUnreadable)
+        public ArchiveCatalog(TimeProvider clock, Action<string, Exception> reportUnreadable, ILogger logger)
         {
             ArgumentNullException.ThrowIfNull(clock);
             ArgumentNullException.ThrowIfNull(reportUnreadable);
+            ArgumentNullException.ThrowIfNull(logger);
 
             this.clock = clock;
             this.reportUnreadable = reportUnreadable;
+            this.logger = logger;
         }
 
         /// <summary>
@@ -71,8 +78,9 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// <param name="folder">Month folder of the day, as listed; listed again when a file of it is gone</param>
         /// <param name="symbol">Databento raw symbol</param>
         /// <param name="date">UTC day, in the folder's month</param>
+        /// <param name="logServed">Whether the file the day was served from is logged</param>
         /// <returns>The day's records, empty for a day archived as empty, or <c>null</c> when no readable archive file lists the day</returns>
-        public async Task<TRecord[]> ReadSymbolDayAsync<TSource, TRecord>(ArchiveRecordSchema<TSource, TRecord> schema, CacheMonthFolder folder, string symbol, DateTime date)
+        public async Task<TRecord[]> ReadSymbolDayAsync<TSource, TRecord>(ArchiveRecordSchema<TSource, TRecord> schema, CacheMonthFolder folder, string symbol, DateTime date, bool logServed = true)
             where TSource : class, IRecord
             where TRecord : class, TSource
         {
@@ -85,6 +93,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
             for(int attempt = 0; attempt < 2; ++attempt)
             {
                 LoadedIndex file = null;
+                TRecord[] records;
                 try
                 {
                     LoadedVersion version = await this.FindVersionAsync(schema, folder, prefix).ConfigureAwait(false);
@@ -101,18 +110,21 @@ namespace Databento.CSharpApiClient.Caching.Archive
 
                     if(location.RecordCount == 0)
                     {
-                        return Array.Empty<TRecord>();
+                        records = Array.Empty<TRecord>();
                     }
-
-                    ArchiveFileReader<TSource, TRecord> reader = await ArchiveFile.ReopenAsync(file.Path, schema, file.Index, file.RowGroupStarts).ConfigureAwait(false);
-                    await using(reader.ConfigureAwait(false))
+                    else
                     {
-                        return await reader.ReadSymbolDayAsync(symbol, date).ConfigureAwait(false);
+                        ArchiveFileReader<TSource, TRecord> reader = await ArchiveFile.ReopenAsync(file.Path, schema, file.Index, file.RowGroupStarts).ConfigureAwait(false);
+                        await using(reader.ConfigureAwait(false))
+                        {
+                            records = await reader.ReadSymbolDayAsync(symbol, date).ConfigureAwait(false);
+                        }
                     }
                 }
                 catch(Exception ex) when(IsRetired(ex))
                 {
                     folder.Refresh();
+                    continue;
                 }
                 catch(Exception ex) when(file != null && IsUnreadable(ex))
                 {
@@ -124,6 +136,14 @@ namespace Databento.CSharpApiClient.Caching.Archive
                     // a file of the version could not even be looked at, such as a share gone: not cached for this read
                     return null;
                 }
+
+                // logged once the read is done, apart from its failures
+                if(records != null && logServed)
+                {
+                    this.logger.ServedFromArchive(symbol, date, folder.Schema, file.Path, records.Length);
+                }
+
+                return records;
             }
 
             return null;

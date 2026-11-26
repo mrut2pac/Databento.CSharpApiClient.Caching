@@ -217,8 +217,9 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         [TestMethod]
         public async Task IngestBatchFolderAsync_ListedSymbolWithoutRecords_IsNotSavedAsEmpty()
         {
+            FakeLogger logger = new FakeLogger();
             using(CachedClientFixture fixture = new CachedClientFixture())
-            using(CachedDatabentoClient client = fixture.CreateClient())
+            using(CachedDatabentoClient client = fixture.CreateClient(options => options.Logger = logger))
             {
                 string quiet = "SPXW  261016C06700000";
                 fixture.Databento.List(quiet);
@@ -229,6 +230,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                 Assert.AreEqual(0, report.SymbolDaysSavedEmpty);
                 Assert.IsNull(fixture.ReadCbboDayFile(quiet, First));
+                logger.AssertLogged(Microsoft.Extensions.Logging.LogLevel.Debug, quiet + " 2026-10-15 cbbo-1m answered no records and is not saved", "has not confirmed it was not listed");
             }
         }
 

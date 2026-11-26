@@ -17,7 +17,7 @@ See [CHANGELOG.md](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching
 dotnet add package Databento.CSharpApiClient.Caching
 ```
 
-It brings in `Databento.CSharpApiClient` and Parquet.Net, and targets .NET 8.
+It brings in `Databento.CSharpApiClient`, Parquet.Net and `Microsoft.Extensions.Logging.Abstractions`, and targets .NET 8.
 
 ## The cached client
 
@@ -124,6 +124,30 @@ A backup is one uncompressed tar of the whole cache root with a manifest of ever
 A restore unpacks the backup into the staging folder and checks every file and the tar's hash before it touches the cache. Then it clears the cache as `ExistingFiles` says and moves the backup's files in. By default (`Keep`) it deletes the archive files and keeps the cache's own day files, since they are served first and may be downloads made after the backup. For a cache whose files can't be trusted, such as ones a faulty release wrote, `MoveAside` moves everything into `<root>.bak_<yyyyMMddTHHmmss>` beside it and `Delete` deletes everything; either way the backup lands in a clean root, and day files downloaded since the backup are bought again when next asked for. While it runs, `RESTORE_IN_PROGRESS` in the cache root keeps new cached clients, compactions and backups from starting. A client that is already running is not seen: stop it first, or give the restore an `ICacheInUseChecker` that reports it, and the restore refuses with an `InvalidOperationException` while it says the cache is in use. `DryRun` unpacks and checks a backup into `DryRunFolder` without touching the cache.
 
 Backups go wherever an `IBackupStore` keeps them; `LocalDirectoryBackupStore` is a local or synced folder, holding each backup's tar beside its hash in `sha256sum`'s format, so `sha256sum -c 20261119T021530.tar.sha256` checks one without the package.
+
+## Logging
+
+The client's, the compactor's, the backup's and the restore's options each take a `Microsoft.Extensions.Logging` `ILogger`, so the package's decisions show in the host's own logs. Without one (the default, and `null`) nothing is logged; a line below the logger's level is never formatted.
+
+```csharp
+ILogger logger = loggerFactory.CreateLogger("Databento.Cache");
+
+using CachedDatabentoClient client = new CachedDatabentoClient(new CachedDatabentoClientOptions
+{
+    Databento = new DatabentoOptions { ApiKey = "YOUR_API_KEY" },
+    CacheRoot = @"D:\MarketData\Databento",
+    Logger = logger,
+});
+```
+
+- **Information:** each download request to Databento (schema, dataset, the symbol or how many, the UTC days and window) and what came back (records, how many of the symbols had any, how long it took); batch jobs reused, priced, submitted, done and saved; a compaction's start and end, and the temporary files a stopped run left that it deleted; each step of a backup and a restore; a compaction, backup or restore the caller canceled.
+- **Debug:** each request served (symbols, range, cache mode); each symbol-day served from its day file or the archive (the file, the record count) or not cached; each save, a day file kept, a day served but not saved (not final), empty days saved or not and why; a wait for another request downloading the same days; each compacted group's files written, verified and published, or nothing to publish; a compaction delete tried again.
+- **Warning:** a download from Databento that failed (with the exception), a symbology refusal and the request sent again with the listed symbols, or a refusal that cannot be resolved; a failed symbology lookup for empty days; a day file that cannot be parsed (deleted, or not deleted) or read; a batch job that could not be saved; a compaction refused (a restore in progress, `cache.lock` held, no `metadata.json`), a compaction file left for the next run, an orphan archive file kept, an unreadable day file, suspect days; a backup or restore refused, left staging files deleted, old backups that cannot be deleted.
+- **Error:** an unreadable archive file (also raised as `ArchiveFileUnreadable`), a compacted group that failed or did not verify, a compaction, backup or restore that failed (with the exception).
+
+Event ids are stable: 1000s the cached client, 2000s its batch jobs, 3000s the compactor, 4000s the backup, 5000s the restore. Counts, symbols, days and paths are logged, never prices or sizes. The rendered message formats days, times and amounts with the invariant culture; structured sinks get the raw values.
+
+**A logger's methods shall not throw** (`Log`, `IsEnabled`, `BeginScope`). The package nevertheless catches and drops anything a logger throws, so a failing logger loses its lines but never changes what the cache serves or writes. A logger is called from several threads at once (concurrent client requests, parallel compaction groups), so it must be thread-safe, as the `Microsoft.Extensions.Logging` loggers are.
 
 ## License
 

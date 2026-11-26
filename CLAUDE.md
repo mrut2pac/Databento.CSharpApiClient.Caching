@@ -6,7 +6,7 @@ Guidelines for working on this repository with Claude Code or any AI coding assi
 
 ## Repo overview
 
-A disk cache and Parquet archive on top of [Databento.CSharpApiClient](https://github.com/mrut2pac/Databento.CSharpApiClient) (.NET 8), so each day of Databento data is paid for once. It depends on the client's NuGet package and Parquet.Net, nothing else.
+A disk cache and Parquet archive on top of [Databento.CSharpApiClient](https://github.com/mrut2pac/Databento.CSharpApiClient) (.NET 8), so each day of Databento data is paid for once. It depends on the client's NuGet package, Parquet.Net and Microsoft.Extensions.Logging.Abstractions, nothing else.
 
 ```
 src/
@@ -74,7 +74,7 @@ The unit tests write into temporary folders and never touch the network. A test 
 
 ## Coding conventions
 
-- **Dependencies:** the client and Parquet.Net only. No logging library: results come back as report objects, and progress through `IProgress<T>`.
+- **Dependencies:** the client, Parquet.Net and Microsoft.Extensions.Logging.Abstractions only. Logging goes through the options' `ILogger` (`NullLogger.Instance` by default), with `[LoggerMessage]` methods in `Logging/CacheLog.cs` (stable event ids by component, at most 6 template arguments so the rendered message stays invariant, counts, symbols, days and paths but never prices or sizes, and never inside a per-record loop); every caller's logger is wrapped once in `NonThrowingLogger` where its options are copied, so a logger that throws loses its line and changes nothing: never call the caller's logger directly; results still come back as report objects, and progress through `IProgress<T>`.
 - **Public surface stays small:** the cached client, `ICachedDatabentoClient` and its extensions, and the client's options, modes and event, the compactor, its options and report, the day-check API, and backup and restore (their options and reports, `IBackupStore`, `LocalDirectoryBackupStore`, `BackupRetention`, `ICacheInUseChecker`, `ExistingCacheFiles`) and `NotCachedException` are public; the archive format, naming, file handling, the backup tar (`Backup/`) and the client's download machinery (`Client/`) are `internal`.
 - **The cached client's calls are the client's**, async and sync, same names and arguments plus a `CacheMode`, one set per schema the archive has columns for (`Client/CachedSchemas.cs`). A new schema is an archive schema, a row there and its calls: its async call for several symbols also goes on `ICachedDatabentoClient` (with a default implementation that throws `NotSupportedException`, so outside implementations keep compiling), its one-symbol and sync forms in `CachedDatabentoClientExtensions`, and, when the client's `IDatabentoTimeseriesClient` has it, a default implementation in `ICachedDatabentoClient` that serves it with `CacheMode.Use`. `CachedClientInterfaceTests` fails until they are there.
 - **New calls get their synchronous forms as extensions only.** A call added to the cached client goes on the class and on `ICachedDatabentoClient` as async, and its sync form goes in `CachedDatabentoClientExtensions`, which serves the class too; the class gets no sync method of its own. The time-series and batch calls keep the sync methods they shipped with on the class: removing them would break compiled callers, so it waits for a major version.

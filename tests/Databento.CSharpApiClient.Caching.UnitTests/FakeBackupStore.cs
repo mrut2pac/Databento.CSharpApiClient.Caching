@@ -44,7 +44,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         /// </summary>
         public IReadOnlyList<string> ExtraNames { get; set; } = Array.Empty<string>();
 
-        public string Location => this.inner.Location;
+        /// <summary>
+        /// Gets or sets what reading <see cref="Location"/> throws, or <c>null</c> for nothing.
+        /// </summary>
+        public Exception LocationFailure { get; set; }
+
+        public string Location => this.LocationFailure == null ? this.inner.Location : throw this.LocationFailure;
 
         public Task PutAsync(string name, string tarPath, string sha256, CancellationToken cancellationToken = default)
         {

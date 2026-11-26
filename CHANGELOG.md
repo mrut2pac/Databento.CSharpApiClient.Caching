@@ -6,6 +6,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Diagnostic logging through `Microsoft.Extensions.Logging`: a `Logger` (`ILogger`, default `NullLogger.Instance`, which `null` also stands for) on `CachedDatabentoClientOptions`, `ArchiveCompactorOptions`, `CacheBackupOptions` and `CacheRestoreOptions`, so the host sees the package's decisions in its own logs.
+  - Information: each download request to Databento and what it brought back (records, symbols with records, time taken), batch jobs reused, priced, submitted, done and saved, a compaction's start and end, and each step of a backup and a restore.
+  - Debug: each symbol-day served from its day file or the archive or not cached, each save and why a day was or was not saved, and each step of a compacted group.
+  - Warning: failed downloads, symbology refusals and their retry, failed lookups, day files that cannot be read, files left for the next compaction, orphan archive files, suspect days, refusals of a compaction, backup or restore. Error: an unreadable archive file, a failed or unverified group, a failed compaction, backup or restore.
+  - Written with the `[LoggerMessage]` source generator, with stable event ids (1000s client, 2000s batch jobs, 3000s compactor, 4000s backup, 5000s restore), so nothing is formatted below the logger's level; the rendered message is formatted with the invariant culture (structured sinks get the raw values), and no prices or sizes are logged.
+  - A logger's methods shall not throw; the package nevertheless drops anything a logger throws, so a failing logger loses its lines but never changes what the cache serves or writes. It is called from several threads at once, so it must be thread-safe.
+
+### Changed
+- Depends on `Microsoft.Extensions.Logging.Abstractions` 8.0.3, besides the client and Parquet.Net.
+
 ## [1.3.0] - 2026-11-25
 
 ### Added
