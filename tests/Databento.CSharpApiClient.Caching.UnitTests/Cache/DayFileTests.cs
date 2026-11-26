@@ -299,20 +299,19 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Cache
         }
 
         [TestMethod]
-        public async Task Read_DayFile_HandsTheReaderOneRecordPerLine()
+        public async Task Read_DayFile_HandsTheReaderTheArrayAsItIsDecompressed()
         {
-            // a day read as JSON lines holds one record at a time as text, where a whole array read as one document holds the whole
-            // day several times over, on the large object heap
+            // handed over as it is decompressed, from the array's start on, rather than as the whole day decompressed into memory
             string path = Path.Combine(this.directory, "day.json.gz");
             CbboRecordJson[] records = { Cbbo(4.05), Cbbo(4.10), Cbbo(4.15) };
-            await DayFile.WriteAsync(path, records, overwrite: true, CancellationToken.None);
-            List<string> lines = new List<string>();
+            WriteGzip(path, " \r\n" + JsonSerializer.Serialize(records));
+            List<string> seen = new List<string>();
 
-            CbboRecordJson[] read = await DayFile.ReadAsync(path, (stream, cancellationToken) => ReadLinesThenRecords(stream, lines, cancellationToken), CancellationToken.None);
+            CbboRecordJson[] read = await DayFile.ReadAsync(path, (stream, cancellationToken) => NoteStreamThenReadRecords(stream, seen, cancellationToken), CancellationToken.None);
 
             Assert.AreEqual(3, read.Length);
             Assert.AreEqual(4.15, read[2].Price);
-            CollectionAssert.AreEqual(records.Select(record => JsonSerializer.Serialize(record)).ToArray(), lines, string.Join(Environment.NewLine, lines));
+            CollectionAssert.AreEqual(new[] { "forward only", "starts with [" }, seen);
         }
 
         [TestMethod]
@@ -395,20 +394,21 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Cache
         }
 
         /// <summary>
-        /// Notes the lines of the stream a day file hands its reader, then reads them as CBBO records
+        /// Notes whether the stream a day file hands its reader can seek and where it starts, then reads it as CBBO records
         /// </summary>
-        private static async IAsyncEnumerable<CbboRecordJson> ReadLinesThenRecords(Stream stream, List<string> lines, [EnumeratorCancellation] CancellationToken cancellationToken)
+        private static async IAsyncEnumerable<CbboRecordJson> NoteStreamThenReadRecords(Stream stream, List<string> seen, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            string text;
-            using(StreamReader reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true))
-            {
-                text = await reader.ReadToEndAsync(cancellationToken);
-            }
+            seen.Add(stream.CanSeek ? "seekable" : "forward only");
+            byte[] first = new byte[1];
+            int read = await stream.ReadAsync(first, cancellationToken);
+            seen.Add(read == 1 && first[0] == '[' ? "starts with [" : "starts elsewhere");
 
-            lines.AddRange(text.Split('\n').Where(line => !string.IsNullOrWhiteSpace(line)));
-            using(MemoryStream records = new MemoryStream(Encoding.UTF8.GetBytes(text)))
+            using(MemoryStream rest = new MemoryStream())
             {
-                await foreach(CbboRecordJson record in JsonRecordReader.ReadCbboAsync(records, cancellationToken))
+                rest.Write(first, 0, read);
+                await stream.CopyToAsync(rest, cancellationToken);
+                rest.Position = 0;
+                await foreach(CbboRecordJson record in JsonRecordReader.ReadCbboAsync(rest, cancellationToken))
                 {
                     yield return record;
                 }

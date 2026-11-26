@@ -33,9 +33,8 @@ namespace Databento.CSharpApiClient.Caching.Cache
                 GZipStream gzip = new GZipStream(file, CompressionMode.Decompress);
                 await using(gzip.ConfigureAwait(false))
                 {
-                    // read one record a line as it is decompressed, never the whole day at once; only an array is a day, since read
-                    // as JSON lines nothing at all would be an empty day, final, and lines would be records
-                    JsonArrayLinesStream json = new JsonArrayLinesStream(gzip);
+                    // read one record at a time as it is decompressed, never the whole day at once
+                    JsonArrayStartStream json = new JsonArrayStartStream(gzip);
                     await using(json.ConfigureAwait(false))
                     {
                         List<TJson> records = new List<TJson>();
