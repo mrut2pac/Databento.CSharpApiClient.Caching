@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+- Log messages end without a period, which read as part of a path or a name before it; a step under way ends with ` ...` instead (Writing the backup tar <path> ...).
+
 ## [1.4.0] - 2026-11-26
 
 ### Added

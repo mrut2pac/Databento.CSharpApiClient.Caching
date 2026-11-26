@@ -234,7 +234,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     logger.AssertLogged(LogLevel.Warning, "Databento refused cbbo-1m of OPRA.PILLAR for 3 symbol(s)", "Asking again with only the 2 listed symbol(s)");
                     Assert.AreEqual(2, logger.Find(LogLevel.Information, "Requesting cbbo-1m").Length);
                     // the retry alone, timed alone: the refused request took 3 s more
-                    logger.AssertLogged(LogLevel.Information, "Got 2 cbbo-1m records", "2 of the 2 symbol(s) requested", "Took 00:00:03.");
+                    logger.AssertLogged(LogLevel.Information, "Got 2 cbbo-1m records", "2 of the 2 symbol(s) requested", "Took 00:00:03");
                 }
             }
         }

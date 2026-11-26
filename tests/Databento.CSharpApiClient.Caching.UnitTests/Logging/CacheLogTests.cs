@@ -49,6 +49,17 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Logging
         }
 
         [TestMethod]
+        public void LoggerMessages_Templates_EndWithoutAPeriod()
+        {
+            // a period after a path or a name reads as part of it; a step under way ends with " ..." instead
+            foreach(MethodInfo method in typeof(CacheLog).GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Where(method => method.GetCustomAttribute<LoggerMessageAttribute>() != null))
+            {
+                string message = method.GetCustomAttribute<LoggerMessageAttribute>().Message;
+                Assert.IsTrue(!message.EndsWith('.') || message.EndsWith(" ...", StringComparison.Ordinal), Invariant($"{method.Name} ends with a period: {message}"));
+            }
+        }
+
+        [TestMethod]
         [DataRow(0)]
         [DataRow(1)]
         [DataRow(2)]
