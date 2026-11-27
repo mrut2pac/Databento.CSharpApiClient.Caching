@@ -145,7 +145,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         {
             this.cache.WriteCbboFile(FullBuiltUtc, 0, Day(Call, 2));
 
-            Assert.IsTrue(await this.catalog.ContainsSymbolDayAsync(Schema, this.ListFolder(October16), Call, October16, strict: true));
+            Assert.IsTrue(await this.catalog.ContainsSymbolDayAsync(Schema, this.GetFolder(October16), Call, October16, strict: true));
             Assert.AreEqual(2, (await this.ReadAsync(Call)).Length);
 
             Assert.AreEqual(1, this.catalog.OpenFiles);
@@ -224,7 +224,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
             Assert.AreEqual(expected, held, path);
         }
 
-        private CacheMonthFolder ListFolder(DateTime date)
+        private CacheMonthFolder GetFolder(DateTime date)
         {
             return new CacheMonthFolder(this.cache.Root, CacheFixture.Opra, CacheFixture.Cbbo, date.Year, date.Month, CacheMetadata.UtcCutoff);
         }
@@ -232,7 +232,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Archive
         private Task<CbboRecordDbn[]> ReadAsync(string symbol, DateTime? date = null)
         {
             DateTime day = date ?? October16;
-            return this.catalog.ReadSymbolDayAsync(Schema, this.ListFolder(day), symbol, day, logServed: false);
+            return this.catalog.ReadSymbolDayAsync(Schema, this.GetFolder(day), symbol, day, logServed: false);
         }
     }
 }

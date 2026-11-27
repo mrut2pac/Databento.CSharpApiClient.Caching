@@ -327,7 +327,7 @@ namespace Databento.CSharpApiClient.Caching.Client
         }
 
         /// <summary>
-        /// Finds each symbol's UTC days in the range the cache does not hold, from day file names and archive indexes alone
+        /// Finds each symbol's UTC days in the range the cache does not hold, from their day files and archive indexes alone
         /// </summary>
         /// <exception cref="InvalidDataException">An archive file that may hold a day cannot be read: buying its month again is left to the caller</exception>
         private async Task<Dictionary<string, List<DateTime>>> FindMissingAsync(ICachedSchema schema, string dataset, List<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, BatchCounts counts, CancellationToken cancellationToken)
@@ -337,7 +337,7 @@ namespace Databento.CSharpApiClient.Caching.Client
             for(DateTime day = startUtc.UtcDateTime.Date; day <= last; day = day.AddDays(1))
             {
                 DateTime utcDay = DateTime.SpecifyKind(day, DateTimeKind.Utc);
-                CacheMonthFolder month = this.store.ListMonth(dataset, schema.Name, utcDay);
+                CacheMonthFolder month = this.store.GetMonth(dataset, schema.Name, utcDay);
                 foreach(string symbol in symbols)
                 {
                     cancellationToken.ThrowIfCancellationRequested();

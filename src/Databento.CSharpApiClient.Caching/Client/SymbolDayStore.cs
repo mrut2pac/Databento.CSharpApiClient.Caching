@@ -31,6 +31,8 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// </summary>
         private volatile bool metadataWritten;
 
+        private long monthFolderListings;
+
         public SymbolDayStore(string cacheRoot, string cutoff, ArchiveCatalog catalog, ILogger logger)
         {
             this.cacheRoot = cacheRoot;
@@ -45,18 +47,23 @@ namespace Databento.CSharpApiClient.Caching.Client
         public string Cutoff { get; }
 
         /// <summary>
-        /// Lists a schema's month folder
+        /// Gets how many times a month folder was listed, for tests.
         /// </summary>
-        public CacheMonthFolder ListMonth(string dataset, string schema, DateTime day)
+        internal long MonthFolderListings => Interlocked.Read(ref this.monthFolderListings);
+
+        /// <summary>
+        /// Gets a schema's month folder for one request, which lists its archive files the first time they are asked for
+        /// </summary>
+        public CacheMonthFolder GetMonth(string dataset, string schema, DateTime day)
         {
-            return new CacheMonthFolder(this.cacheRoot, dataset, schema, day.Year, day.Month, this.Cutoff);
+            return new CacheMonthFolder(this.cacheRoot, dataset, schema, day.Year, day.Month, this.Cutoff, () => Interlocked.Increment(ref this.monthFolderListings));
         }
 
         /// <summary>
-        /// Reads a symbol-day: its day file when the folder lists one, else the archive
+        /// Reads a symbol-day: its day file, opened by name, else the archive
         /// </summary>
         /// <param name="schema">Schema served</param>
-        /// <param name="folder">Month folder of the day, as listed</param>
+        /// <param name="folder">Month folder of the day</param>
         /// <param name="symbol">Databento raw symbol</param>
         /// <param name="day">UTC day</param>
         /// <param name="cancellationToken">Cancellation token</param>
@@ -68,50 +75,53 @@ namespace Databento.CSharpApiClient.Caching.Client
             where TRecord : class, TSource
             where TJson : class, TSource
         {
-            string fileName = DayFileName.Format(symbol, day, this.Cutoff);
-            if(folder.Contains(fileName))
+            string path = Path.Combine(folder.Directory, DayFileName.Format(symbol, day, this.Cutoff));
+            TJson[] records = null;
+            try
             {
-                string path = Path.Combine(folder.Directory, fileName);
-                TJson[] records = null;
-                try
+                records = await DayFile.ReadAsync(path, schema.ReadDayFile, cancellationToken).ConfigureAwait(false);
+            }
+            catch(Exception ex) when(ex is FileNotFoundException || ex is DirectoryNotFoundException)
+            {
+                // no day file, or compacted away since: the archive is asked
+            }
+            catch(Exception ex) when(ex is InvalidDataException || ex is JsonException)
+            {
+                if(TryDelete(path, out string deleteError))
                 {
-                    records = await DayFile.ReadAsync(path, schema.ReadDayFile, cancellationToken).ConfigureAwait(false);
+                    this.logger.DayFileDeleted(path, ex.Message);
                 }
-                catch(Exception ex) when(ex is FileNotFoundException || ex is DirectoryNotFoundException)
+                else
                 {
-                    // compacted since the folder was listed: the archive holds it now
-                    folder.Refresh();
-                }
-                catch(Exception ex) when(ex is InvalidDataException || ex is JsonException)
-                {
-                    if(TryDelete(path, out string deleteError))
-                    {
-                        this.logger.DayFileDeleted(path, ex.Message);
-                    }
-                    else
-                    {
-                        this.logger.DayFileNotDeleted(path, ex.Message, deleteError);
-                    }
-                }
-                catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
-                {
-                    // the disk's, not the file's: left as it is
-                    this.logger.DayFileNotRead(path, ex.Message);
-                }
-
-                // logged once the read is done, apart from its failures
-                if(records != null)
-                {
-                    if(logServed)
-                    {
-                        this.logger.ServedFromDayFile(symbol, day, folder.Schema, Path.GetFileName(path), records.Length);
-                    }
-
-                    return records;
+                    this.logger.DayFileNotDeleted(path, ex.Message, deleteError);
                 }
             }
+            catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
+            {
+                // the disk's, not the file's: left as it is
+                this.logger.DayFileNotRead(path, ex.Message);
+            }
 
+            // logged once the read is done, apart from its failures
+            if(records != null)
+            {
+                if(logServed)
+                {
+                    this.logger.ServedFromDayFile(symbol, day, folder.Schema, Path.GetFileName(path), records.Length);
+                }
+
+                return records;
+            }
+
+            // listed here, not inside the archive read, so a folder that cannot be listed fails the request rather than reading as not cached
+            _ = folder.ArchiveFiles;
             TRecord[] archived = await this.catalog.ReadSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, logServed).ConfigureAwait(false);
+            if(archived == null && folder.RefreshIfChanged())
+            {
+                // a compaction since the listing may have absorbed the day file and deleted it
+                _ = folder.ArchiveFiles;
+                archived = await this.catalog.ReadSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, logServed).ConfigureAwait(false);
+            }
             if(archived == null && logServed)
             {
                 this.logger.NotCached(symbol, day, folder.Schema, folder.Dataset);
@@ -121,26 +131,39 @@ namespace Databento.CSharpApiClient.Caching.Client
         }
 
         /// <summary>
-        /// Tells whether the cache holds a symbol-day, from the day file's name in the folder's listing or the archive's index, reading no
+        /// Tells whether the cache holds a symbol-day, from its day file being there, readable or not, or the archive's index, reading no
         /// records
         /// </summary>
         /// <param name="schema">Schema served</param>
-        /// <param name="folder">Month folder of the day, as listed</param>
+        /// <param name="folder">Month folder of the day</param>
         /// <param name="symbol">Databento raw symbol</param>
         /// <param name="day">UTC day</param>
         /// <param name="strict">Whether an archive file that cannot be read throws, rather than counting as not holding the day</param>
         /// <returns><c>true</c> when a day file or a readable archive file holds the day, empty or not</returns>
-        public Task<bool> ContainsAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, CacheMonthFolder folder, string symbol, DateTime day, bool strict = false)
+        public async Task<bool> ContainsAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, CacheMonthFolder folder, string symbol, DateTime day, bool strict = false)
             where TSource : class, IRecord
             where TRecord : class, TSource
             where TJson : class, TSource
         {
-            if(folder.Contains(DayFileName.Format(symbol, day, this.Cutoff)))
+            if(DayFileExists(Path.Combine(folder.Directory, DayFileName.Format(symbol, day, this.Cutoff))))
             {
-                return Task.FromResult(true);
+                return true;
             }
 
-            return this.catalog.ContainsSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, strict);
+            _ = folder.ArchiveFiles;
+            if(await this.catalog.ContainsSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, strict).ConfigureAwait(false))
+            {
+                return true;
+            }
+
+            // a compaction since the listing may have absorbed the day file and deleted it
+            if(folder.RefreshIfChanged())
+            {
+                _ = folder.ArchiveFiles;
+                return await this.catalog.ContainsSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, strict).ConfigureAwait(false);
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -179,6 +202,23 @@ namespace Databento.CSharpApiClient.Caching.Client
             }
 
             return saved;
+        }
+
+        /// <summary>
+        /// Tells whether a day file is there; unlike <see cref="File.Exists(string)"/>, which answers false for any I/O failure, a failure
+        /// other than the file or its folder not being there throws
+        /// </summary>
+        private static bool DayFileExists(string path)
+        {
+            try
+            {
+                File.GetAttributes(path);
+                return true;
+            }
+            catch(Exception ex) when(ex is FileNotFoundException || ex is DirectoryNotFoundException)
+            {
+                return false;
+            }
         }
 
         /// <summary>
