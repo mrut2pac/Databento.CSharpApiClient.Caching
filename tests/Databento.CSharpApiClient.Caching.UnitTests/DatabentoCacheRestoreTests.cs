@@ -312,6 +312,22 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         [TestMethod]
+        public async Task Restore_CacheUsedWhileTheBackupWasUnpacked_ThrowsBeforeTheSwapAndDeletesTheMarker()
+        {
+            this.PutBackup(BackupTarTestFiles.CreateTar(BackupFiles));
+            Dictionary<string, byte[]> before = this.CacheContents();
+
+            // free at the first two checks, in use at the last, made once the backup is unpacked
+            FakeCacheInUseChecker checker = new FakeCacheInUseChecker(check => check == 3 && File.Exists(this.MarkerPath));
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => this.CreateRestore(checker).RestoreAsync(Name));
+
+            Assert.AreEqual(3, checker.Checks);
+            this.AssertCacheIs(before);
+            Assert.IsFalse(File.Exists(this.MarkerPath));
+        }
+
+        [TestMethod]
         public async Task Restore_WhileRunning_KeepsNewClientsOffWithTheMarkerAndDeletesItOnceDone()
         {
             this.PutBackup(BackupTarTestFiles.CreateTar(BackupFiles));

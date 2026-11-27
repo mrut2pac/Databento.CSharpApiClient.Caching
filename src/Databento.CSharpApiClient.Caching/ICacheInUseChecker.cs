@@ -2,7 +2,7 @@ namespace Databento.CSharpApiClient.Caching
 {
     /// <summary>
     /// Tells a <see cref="DatabentoCacheRestore"/> whether something is using the cache it is about to restore, such as a service holding a
-    /// <see cref="CachedDatabentoClient"/> on it. The restore asks before it writes its marker and again after, and refuses while the cache is in use.
+    /// <see cref="CachedDatabentoClient"/> on it. The restore asks before it writes its marker, again after, and once more after unpacking the backup, just before it changes the cache, and refuses while the cache is in use.
     /// </summary>
     public interface ICacheInUseChecker
     {

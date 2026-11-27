@@ -168,6 +168,9 @@ namespace Databento.CSharpApiClient.Caching
                     {
                         throw this.Refuse(refusal, backupName, new IOException(Invariant($"{movedAsideFolder} already exists, so the cache's files cannot be moved aside into it; restore again a second later.")));
                     }
+
+                    // asked again last, for a client that started before the marker and opened archive files while the backup was unpacked
+                    this.ThrowIfInUse(refusal, backupName);
                 }
                 catch
                 {
