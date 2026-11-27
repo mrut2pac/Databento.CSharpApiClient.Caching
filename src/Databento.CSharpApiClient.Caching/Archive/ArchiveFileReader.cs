@@ -58,11 +58,6 @@ namespace Databento.CSharpApiClient.Caching.Archive
         public ArchiveIndex Index { get; }
 
         /// <summary>
-        /// Gets the file row each row group starts at, which <see cref="ArchiveFile.ReopenAsync{TSource, TRecord}"/> takes back.
-        /// </summary>
-        internal IReadOnlyList<long> RowGroupStarts => this.rowGroupStarts;
-
-        /// <summary>
         /// Gets how many times a read decoded a row group, so a test can tell a row group is decoded once for the days that share it.
         /// </summary>
         internal int RowGroupsDecoded { get; private set; }

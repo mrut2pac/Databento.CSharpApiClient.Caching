@@ -75,6 +75,49 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         }
 
         [TestMethod]
+        public async Task GetCbbo1mAsync_CompactionRetiresAFileTheClientKeepsOpen_DeletesItAndServesTheNewVersion()
+        {
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            using(CachedDatabentoClient client = fixture.CreateClient())
+            {
+                string old = fixture.Cache.WriteCbboFile(new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), 0, new ArchiveSymbolDay<ICbboRecord>(Call, Day, new ICbboRecord[] { Cbbo(Call, Day, 1) }));
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
+                fixture.Cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Put, Day, Cbbo(Put, Day, 2));
+
+                ArchiveCompactorOptions options = fixture.Cache.CreateOptions(fixture.Clock);
+                options.CompactionMode = CompactionMode.Full;
+                ArchiveCompactionReport report = await new DatabentoArchiveCompactor(options).CompactAsync();
+
+                Assert.AreEqual(0, report.FilesLeft.Count);
+                Assert.IsFalse(File.Exists(old));
+                CollectionAssert.AreEqual(ReceivedTimes(Cbbo(Call, Day, 1)), ReceivedTimes(await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd)));
+                CollectionAssert.AreEqual(ReceivedTimes(Cbbo(Put, Day, 2)), ReceivedTimes(await client.GetCbbo1mAsync(Datasets.OpraPillar, Put, DayStart, DayEnd)));
+                Assert.AreEqual(0, fixture.Databento.TimeseriesRequests.Count);
+            }
+        }
+
+        [TestMethod]
+        public async Task Dispose_ArchiveFileRead_ClosesIt()
+        {
+            if(!OperatingSystem.IsWindows())
+            {
+                Assert.Inconclusive("Only Windows refuses an open that shares nothing while another handle holds the file.");
+            }
+
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            {
+                string archive = fixture.Cache.WriteCbboFile(new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), 0, new ArchiveSymbolDay<ICbboRecord>(Call, Day, new ICbboRecord[] { Cbbo(Call, Day, 1) }));
+                CachedDatabentoClient client = fixture.CreateClient();
+                await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
+                Assert.ThrowsException<IOException>(() => new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.None).Dispose(), "kept open between calls");
+
+                client.Dispose();
+
+                new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.None).Dispose();
+            }
+        }
+
+        [TestMethod]
         public async Task GetCbbo1mAsync_DayInTheDayFileAndTheArchive_IsServedFromTheDayFile()
         {
             using(CachedClientFixture fixture = new CachedClientFixture())

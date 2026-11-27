@@ -189,6 +189,34 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         [DataRow(ExistingCacheFiles.Keep)]
         [DataRow(ExistingCacheFiles.MoveAside)]
         [DataRow(ExistingCacheFiles.Delete)]
+        public async Task Restore_ArchiveFileHeldOpenAsTheCachedClientHoldsIt_ThrowsNamingItAndLeavesTheCacheAsItWas(ExistingCacheFiles existing)
+        {
+            if(!OperatingSystem.IsWindows())
+            {
+                Assert.Inconclusive("Only Windows refuses an open that shares nothing while another process's handle holds the file.");
+            }
+
+            const string HeldFile = "OPRA.PILLAR/cbbo-1m/2026/10/SPXW.OPT_2026-10.UTC_20261117T021500.full.parquet";
+            this.WriteCacheFile(HeldFile, 7);
+            this.PutBackup(BackupTarTestFiles.CreateTar(BackupFiles));
+            Dictionary<string, byte[]> before = this.CacheContents();
+
+            using(new FileStream(this.CachePath(HeldFile), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                InvalidOperationException ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => this.CreateRestore(change: options => options.ExistingFiles = existing).RestoreAsync(Name));
+
+                StringAssert.Contains(ex.Message, Path.Combine(HeldFile.Split('/')));
+            }
+
+            this.AssertCacheIs(before);
+            Assert.IsFalse(File.Exists(this.MarkerPath), "refused before the marker is written");
+            Assert.IsFalse(Directory.Exists(this.MovedAsideFolder));
+        }
+
+        [TestMethod]
+        [DataRow(ExistingCacheFiles.Keep)]
+        [DataRow(ExistingCacheFiles.MoveAside)]
+        [DataRow(ExistingCacheFiles.Delete)]
         public async Task DryRun_EachWayOfClearing_CountsWhatTheRealRestoreDoes(ExistingCacheFiles existing)
         {
             this.WriteCacheFile(DayFile, 6, 6);
@@ -281,6 +309,22 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
 
             Assert.AreEqual(2, checker.Checks);
             this.AssertCacheIs(before);
+        }
+
+        [TestMethod]
+        public async Task Restore_CacheUsedWhileTheBackupWasUnpacked_ThrowsBeforeTheSwapAndDeletesTheMarker()
+        {
+            this.PutBackup(BackupTarTestFiles.CreateTar(BackupFiles));
+            Dictionary<string, byte[]> before = this.CacheContents();
+
+            // free at the first two checks, in use at the last, made once the backup is unpacked
+            FakeCacheInUseChecker checker = new FakeCacheInUseChecker(check => check == 3 && File.Exists(this.MarkerPath));
+
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => this.CreateRestore(checker).RestoreAsync(Name));
+
+            Assert.AreEqual(3, checker.Checks);
+            this.AssertCacheIs(before);
+            Assert.IsFalse(File.Exists(this.MarkerPath));
         }
 
         [TestMethod]

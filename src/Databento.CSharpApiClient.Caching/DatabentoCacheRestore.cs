@@ -82,7 +82,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <param name="cancellationToken">Cancellation token; once the files are being swapped the restore runs to its end</param>
         /// <returns>What the restore did, or for a dry run what a real one would do to the cache</returns>
         /// <exception cref="ArgumentException">The name is no backup's, or the store holds no backup of that name</exception>
-        /// <exception cref="InvalidOperationException">The in-use checker reports the cache in use, or a compaction, backup or restore holds the root's lock</exception>
+        /// <exception cref="InvalidOperationException">The in-use checker reports the cache in use, an archive file is open (seen on Windows only), or a compaction, backup or restore holds the root's lock</exception>
         /// <exception cref="InvalidDataException">The backup is damaged, differs from its manifest, or holds no <c>metadata.json</c> this package accepts</exception>
         /// <exception cref="IOException">The store cannot be read, or a file cannot be moved into the cache; during the swap the marker stays</exception>
         public async Task<CacheRestoreReport> RestoreAsync(string backupName, CancellationToken cancellationToken = default)
@@ -168,6 +168,9 @@ namespace Databento.CSharpApiClient.Caching
                     {
                         throw this.Refuse(refusal, backupName, new IOException(Invariant($"{movedAsideFolder} already exists, so the cache's files cannot be moved aside into it; restore again a second later.")));
                     }
+
+                    // asked again last, for a client that started before the marker and opened archive files while the backup was unpacked
+                    this.ThrowIfInUse(refusal, backupName);
                 }
                 catch
                 {
@@ -280,6 +283,41 @@ namespace Databento.CSharpApiClient.Caching
             {
                 throw this.Refuse(refusal, backupName, new InvalidOperationException(Invariant($"{this.options.CacheRoot} is in use, as its in-use checker reports, so it was not restored; stop what uses it and restore again.")));
             }
+
+            List<string> held = this.ListHeldArchiveFiles();
+            if(held.Count > 0)
+            {
+                throw this.Refuse(refusal, backupName, new InvalidOperationException(Invariant($"{this.options.CacheRoot} is in use: {held.Count} archive file(s) are open, as a running cached client keeps them, so it was not restored; stop what uses it and restore again. Open: {string.Join(", ", held.Take(5))}{(held.Count > 5 ? ", ..." : string.Empty)}")));
+            }
+        }
+
+        /// <summary>
+        /// Lists the cache's archive files something holds open, each found by an open that shares nothing. A running cached client keeps
+        /// the archive files it reads open; where the system does not lock files for other processes, none is found.
+        /// </summary>
+        private List<string> ListHeldArchiveFiles()
+        {
+            List<string> held = new List<string>();
+            if(!Directory.Exists(this.options.CacheRoot))
+            {
+                return held;
+            }
+
+            foreach(string file in Directory.EnumerateFiles(this.options.CacheRoot, "*" + ArchiveFileName.Extension, SearchOption.AllDirectories))
+            {
+                try
+                {
+                    using(new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
+                    {
+                    }
+                }
+                catch(IOException ex) when(ex is not FileNotFoundException && ex is not DirectoryNotFoundException)
+                {
+                    held.Add(Path.GetRelativePath(this.options.CacheRoot, file));
+                }
+            }
+
+            return held;
         }
 
         /// <summary>
