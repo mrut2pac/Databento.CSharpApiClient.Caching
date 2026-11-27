@@ -298,8 +298,9 @@ namespace Databento.CSharpApiClient.Caching.Client
         }
 
         /// <summary>
-        /// Reads the pending symbol-days the cache holds, listing each month folder once, and takes them out of the pending ones; with no
-        /// <paramref name="served"/>, only finds them, by day file name and archive index, reading no record
+        /// Reads the pending symbol-days the cache holds, listing each month folder's archive files once (again only when one was retired or
+        /// the folder changed under a miss), and takes them out of the pending ones; with no <paramref name="served"/>, only finds them, by
+        /// their day files and the archive index, reading no record
         /// </summary>
         private async Task ReadCachedAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, string dataset, HashSet<SymbolDay> pending, Dictionary<SymbolDay, TSource[]> served, CancellationToken cancellationToken)
             where TSource : class, IRecord
@@ -308,7 +309,7 @@ namespace Databento.CSharpApiClient.Caching.Client
         {
             foreach(IGrouping<DateTime, SymbolDay> month in pending.GroupBy(symbolDay => new DateTime(symbolDay.Day.Year, symbolDay.Day.Month, 1)).ToList())
             {
-                CacheMonthFolder folder = this.store.ListMonth(dataset, schema.Name, month.Key);
+                CacheMonthFolder folder = this.store.GetMonth(dataset, schema.Name, month.Key);
                 foreach(SymbolDay symbolDay in month)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -638,7 +639,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                     answer.Records.TryGetValue(symbolDay, out List<TJson> records);
 
                     // only looked at: what a bypass serves is the download's, so no cache hit is logged
-                    TSource[] cached = bypass && (final || records == null) ? await this.store.ReadAsync(schema, this.store.ListMonth(dataset, schema.Name, day), symbol, day, cancellationToken, logServed: false).ConfigureAwait(false) : null;
+                    TSource[] cached = bypass && (final || records == null) ? await this.store.ReadAsync(schema, this.store.GetMonth(dataset, schema.Name, day), symbol, day, cancellationToken, logServed: false).ConfigureAwait(false) : null;
                     if(records != null)
                     {
                         Serve(served, symbolDay, records);

@@ -30,7 +30,7 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// Tells whether the cache holds a symbol-day of this schema, from the day file's name or the archive's index, reading no records
         /// </summary>
         /// <param name="store">The cache</param>
-        /// <param name="folder">Month folder of the day, as listed</param>
+        /// <param name="folder">Month folder of the day</param>
         /// <param name="symbol">Databento raw symbol</param>
         /// <param name="day">UTC day</param>
         /// <param name="strict">Whether an archive file that cannot be read throws, rather than counting as not holding the day</param>

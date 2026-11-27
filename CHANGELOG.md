@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- A time-series call no longer lists every file of each month folder it reads. A day file is opened by name, and a day without one goes to the archive. The folder's archive files are listed only when a day is not in a day file, once per call and month folder, and again when such a day misses the archive in a folder that changed since the listing, as a compaction absorbing that day file during the call does. On a folder of 58,800 day files, each call used to list the whole folder first: 51 to 66 ms and 25 MB allocated per symbol-day with one reader, 118 to 173 ms with eight; it now takes 1.6 to 5.6 ms and allocates 177 KB, about the day's records. A day served from the archive now pays one failed open of its day file first, about 50 microseconds, against about 2 ms to read the day from the archive. `EnsureCachedAsync` and batch jobs find a day file by its name too.
+
 ## [1.6.1] - 2026-11-27
 
 ### Changed

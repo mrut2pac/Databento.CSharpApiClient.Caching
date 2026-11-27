@@ -253,7 +253,7 @@ namespace Databento.CSharpApiClient.Caching.Client
 
         /// <summary>
         /// What one folder's ingestion keeps as it goes: its final days and symbols, the symbol-days it has handled, the month folders it
-        /// has listed, and the symbology lookup once made
+        /// has looked in, and the symbology lookup once made
         /// </summary>
         private sealed class SymbolDayRun
         {
@@ -281,7 +281,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                 DateTime month = new DateTime(day.Year, day.Month, 1);
                 if(!this.months.TryGetValue(month, out CacheMonthFolder folder))
                 {
-                    folder = store.ListMonth(this.Folder.Dataset, schema, day);
+                    folder = store.GetMonth(this.Folder.Dataset, schema, day);
                     this.months.Add(month, folder);
                 }
 

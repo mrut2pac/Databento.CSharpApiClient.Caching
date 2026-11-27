@@ -28,7 +28,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
         internal const int MaxCachedVersions = 32;
 
         /// <summary>
-        /// How many times a read lists a month folder: once, and once more when a listed file is gone. The compactor publishes the next version
+        /// How many times a read lists a month folder's archive files: once, and once more when a listed file is gone. The compactor publishes the next version
         /// before it retires a file, so the second listing finds it; only another compaction finished between that listing and the open would
         /// need a third, and compactions take the root's lock and seconds each, against the milliseconds between the two.
         /// </summary>
@@ -102,7 +102,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// <typeparam name="TSource">Record interface</typeparam>
         /// <typeparam name="TRecord">Record type a read returns</typeparam>
         /// <param name="schema">Archive schema of the Databento schema</param>
-        /// <param name="folder">Month folder of the day, as listed; listed again when a file of it is gone</param>
+        /// <param name="folder">Month folder of the day, its archive files as listed; listed again when one of them is gone</param>
         /// <param name="symbol">Databento raw symbol</param>
         /// <param name="date">UTC day, in the folder's month</param>
         /// <param name="logServed">Whether the file the day was served from is logged</param>
@@ -145,7 +145,9 @@ namespace Databento.CSharpApiClient.Caching.Archive
                 }
                 catch(Exception ex) when(IsRetired(ex))
                 {
+                    // listed here, in the catch, so a folder that cannot be listed fails the read rather than reading as not cached
                     folder.Refresh();
+                    _ = folder.ArchiveFiles;
                     continue;
                 }
                 catch(Exception ex) when(file != null && IsUnreadable(ex))
@@ -177,7 +179,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
         /// <typeparam name="TSource">Record interface</typeparam>
         /// <typeparam name="TRecord">Record type a read returns</typeparam>
         /// <param name="schema">Archive schema of the Databento schema</param>
-        /// <param name="folder">Month folder of the day, as listed; listed again when a file of it is gone</param>
+        /// <param name="folder">Month folder of the day, its archive files as listed; listed again when one of them is gone</param>
         /// <param name="symbol">Databento raw symbol</param>
         /// <param name="date">UTC day, in the folder's month</param>
         /// <param name="strict">Whether a file of the version that cannot be read throws, rather than counting as not listing the day</param>
@@ -201,7 +203,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
                         return true;
                     }
 
-                    ArchiveVersion current = ArchiveFileName.FindCurrentVersion(folder.Files, prefix);
+                    ArchiveVersion current = ArchiveFileName.FindCurrentVersion(folder.ArchiveFiles, prefix);
                     if(strict && current != null && (version == null || version.Files.Count != current.Paths.Count))
                     {
                         throw new InvalidDataException(Invariant($"An archive file of {Path.Combine(folder.Directory, prefix)}* cannot be read, so whether it holds {symbol} {date:yyyy-MM-dd} is unknown."));
@@ -212,6 +214,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
                 catch(Exception ex) when(IsRetired(ex))
                 {
                     folder.Refresh();
+                    _ = folder.ArchiveFiles;
                 }
                 catch(Exception ex) when(!strict && IsUnreadable(ex))
                 {
@@ -306,7 +309,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
             where TRecord : class, TSource
         {
             ObjectDisposedException.ThrowIf(this.disposed, this);
-            ArchiveVersion version = ArchiveFileName.FindCurrentVersion(folder.Files, prefix);
+            ArchiveVersion version = ArchiveFileName.FindCurrentVersion(folder.ArchiveFiles, prefix);
             if(version == null)
             {
                 return null;

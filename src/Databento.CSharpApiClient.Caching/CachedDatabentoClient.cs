@@ -45,6 +45,8 @@ namespace Databento.CSharpApiClient.Caching
 
         private readonly ILogger logger;
 
+        private readonly SymbolDayStore store;
+
         /// <summary>
         /// Opens a cache
         /// </summary>
@@ -70,10 +72,10 @@ namespace Databento.CSharpApiClient.Caching
             this.jsonClient = new DatabentoJsonClient(settings.Databento, transport);
             this.dbnClient = settings.Transport == DatabentoTransport.Dbn ? new DatabentoClient(settings.Databento, transport) : null;
             this.catalog = new ArchiveCatalog(settings.TimeProvider, this.OnArchiveFileUnreadable, settings.Logger);
-            SymbolDayStore store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, this.catalog, settings.Logger);
+            this.store = new SymbolDayStore(settings.CacheRoot, CacheMetadata.UtcCutoff, this.catalog, settings.Logger);
             DatasetAvailability availability = new DatasetAvailability();
-            this.timeseries = new CachedTimeseries(settings, this.jsonClient, this.dbnClient, store, availability);
-            this.batchJobs = new BatchJobs(settings, this.jsonClient, store, availability, new BatchIngestion(settings, this.jsonClient, store));
+            this.timeseries = new CachedTimeseries(settings, this.jsonClient, this.dbnClient, this.store, availability);
+            this.batchJobs = new BatchJobs(settings, this.jsonClient, this.store, availability, new BatchIngestion(settings, this.jsonClient, this.store));
         }
 
         /// <summary>
@@ -87,6 +89,11 @@ namespace Databento.CSharpApiClient.Caching
         /// Gets the DBN client the records are downloaded with, or null when they are downloaded as JSON, for tests
         /// </summary>
         internal DatabentoClient DbnClient => this.dbnClient;
+
+        /// <summary>
+        /// Gets how many times a month folder was listed, for tests
+        /// </summary>
+        internal long MonthFolderListings => this.store.MonthFolderListings;
 
         /// <summary>
         /// Releases the Databento clients and their HTTP transport, and closes the archive files kept open
