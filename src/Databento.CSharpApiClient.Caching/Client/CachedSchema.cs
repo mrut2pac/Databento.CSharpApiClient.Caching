@@ -91,5 +91,10 @@ namespace Databento.CSharpApiClient.Caching.Client
         {
             return store.ContainsAsync(this, folder, symbol, day, strict);
         }
+
+        public Task<EnsureCachedReport> EnsureCachedAsync(CachedTimeseries timeseries, string dataset, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken)
+        {
+            return timeseries.EnsureCachedAsync(this, dataset, symbols, startUtc, endUtc, cancellationToken);
+        }
     }
 }

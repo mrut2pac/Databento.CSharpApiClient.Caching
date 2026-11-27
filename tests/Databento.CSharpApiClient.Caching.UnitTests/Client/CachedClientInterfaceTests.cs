@@ -53,7 +53,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             List<string> extra = offered.Where(member => !calls.Any(call => call.Name == member.Name && OwnParameters(member).SequenceEqual(Parameters(call))) && !IsSyncFormOfAClassCall(member, calls))
                 .Select(Signature).ToList();
 
-            Assert.AreEqual(60, calls.Count, "44 time-series calls and the batch calls, async and sync, and 12 metadata and symbology calls, async");
+            Assert.AreEqual(61, calls.Count, "44 time-series calls and the batch calls, async and sync, EnsureCachedAsync, and 12 metadata and symbology calls, async");
             Assert.AreEqual(0, missing.Count, "Not offered: " + string.Join("; ", missing));
             Assert.AreEqual(0, extra.Count, "Not on the client: " + string.Join("; ", extra));
         }

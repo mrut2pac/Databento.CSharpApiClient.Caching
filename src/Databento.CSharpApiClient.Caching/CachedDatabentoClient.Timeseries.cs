@@ -11,6 +11,31 @@ namespace Databento.CSharpApiClient.Caching
     public sealed partial class CachedDatabentoClient
     {
         /// <summary>
+        /// Makes sure the cache holds a range's symbol-days, returning no records: finds the cached ones by day file name and the archive's
+        /// index, reading no record, and downloads only the others, saving them as the time-series calls with <see cref="CacheMode.Use"/>
+        /// do; nothing downloaded is kept in memory once saved.
+        /// </summary>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="schema">Databento schema the cache holds, e.g. <c>cbbo-1m</c></param>
+        /// <param name="symbols">Databento raw symbols</param>
+        /// <param name="startUtc">Start of the range, inclusive; its whole UTC day is made sure of</param>
+        /// <param name="endUtc">End of the range, exclusive; its whole UTC day is made sure of</param>
+        /// <param name="ct">Cancellation token</param>
+        /// <returns>The symbol-days found cached, saved, and still not cached</returns>
+        /// <exception cref="ArgumentException">The cache holds no such schema, or a symbol or the range is not one a time-series call takes</exception>
+        /// <exception cref="Databento.CSharpApiClient.Exceptions.DatabentoHttpException">Databento refused a download; or, with <see cref="AvailableEndRefusal.Throw"/>, a
+        /// download was cut at the available end, thrown once the days before it are saved</exception>
+        public Task<EnsureCachedReport> EnsureCachedAsync(string dataset, string schema, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken ct = default)
+        {
+            if(!CachedSchemas.TryGet(schema, out ICachedSchema cachedSchema))
+            {
+                throw new ArgumentException(Invariant($"The cache holds no {schema}; it holds {string.Join(", ", CachedSchemas.Names)}."), nameof(schema));
+            }
+
+            return cachedSchema.EnsureCachedAsync(this.timeseries, dataset, symbols, startUtc, endUtc, ct);
+        }
+
+        /// <summary>
         /// Gets consolidated BBO 1-second snapshots for one symbol, from the cache where it holds them
         /// </summary>
         /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>

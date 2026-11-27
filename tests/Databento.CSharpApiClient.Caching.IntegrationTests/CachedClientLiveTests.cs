@@ -47,6 +47,30 @@ namespace Databento.CSharpApiClient.Caching.IntegrationTests
         }
 
         [TestMethod]
+        public async Task EnsureCached_TwoContracts_SavesThemOnceAndThenFindsThemWithoutAsking()
+        {
+            const string SpxwPut = "SPXW  250908P06475000";
+            string[] symbols = { SpxwCall, SpxwPut };
+            await LiveBudget.ChargeAsync(this.Reference, Datasets.OpraPillar, "cbbo-1m", symbols, Day, Day.AddDays(1)).ConfigureAwait(false);
+            string root = this.NewFolder();
+            CachedDatabentoClient client = this.OpenClient(root, DatabentoTransport.Json, out CountingTransport requests);
+
+            EnsureCachedReport first = await client.EnsureCachedAsync(Datasets.OpraPillar, "cbbo-1m", symbols, Day, Day.AddDays(1)).ConfigureAwait(false);
+            requests.ForbidDownloads();
+            int sentBefore = requests.Total;
+            EnsureCachedReport again = await client.EnsureCachedAsync(Datasets.OpraPillar, "cbbo-1m", symbols, Day, Day.AddDays(1)).ConfigureAwait(false);
+            ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, symbols, Day, Day.AddDays(1), CacheMode.CacheOnly).ConfigureAwait(false);
+            long counted = await this.Reference.GetRecordCountAsync(Datasets.OpraPillar, symbols, "cbbo-1m", Day, Day.AddDays(1)).ConfigureAwait(false);
+
+            Assert.AreEqual(2, first.Saved);
+            Assert.AreEqual(0, first.NotCached.Count);
+            Assert.AreEqual(1, requests.Count("timeseries.get_range"), "Both contracts in one request.");
+            Assert.AreEqual(2, again.AlreadyCached);
+            Assert.AreEqual(sentBefore, requests.Total, "The second call asks Databento nothing.");
+            Assert.AreEqual(counted, served.Length, "Databento's count for the day");
+        }
+
+        [TestMethod]
         public async Task DayBeforeListing_IsSavedEmpty_AndNotAskedForAgain()
         {
             DateTimeOffset beforeListing = new DateTimeOffset(2025, 1, 2, 0, 0, 0, TimeSpan.Zero);

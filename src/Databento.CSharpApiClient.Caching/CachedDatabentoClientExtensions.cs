@@ -565,6 +565,23 @@ namespace Databento.CSharpApiClient.Caching
         }
 
         /// <summary>
+        /// Makes sure the cache holds a range's symbol-days, returning no records, synchronously; see
+        /// <see cref="ICachedDatabentoClient.EnsureCachedAsync"/>
+        /// </summary>
+        /// <param name="client">The cached client</param>
+        /// <param name="dataset">Databento dataset, e.g. <c>OPRA.PILLAR</c></param>
+        /// <param name="schema">Databento schema the cache holds, e.g. <c>cbbo-1m</c></param>
+        /// <param name="symbols">Databento raw symbols</param>
+        /// <param name="startUtc">Start of the range, inclusive; its whole UTC day is made sure of</param>
+        /// <param name="endUtc">End of the range, exclusive; its whole UTC day is made sure of</param>
+        /// <returns>The symbol-days found cached, saved, and still not cached</returns>
+        public static EnsureCachedReport EnsureCached(this ICachedDatabentoClient client, string dataset, string schema, IReadOnlyList<string> symbols, DateTimeOffset startUtc, DateTimeOffset endUtc)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            return client.EnsureCachedAsync(dataset, schema, symbols, startUtc, endUtc).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
         /// Saves a Databento batch download folder made by any tool as day files, synchronously; see
         /// <see cref="ICachedDatabentoClient.IngestBatchFolderAsync"/>
         /// </summary>
