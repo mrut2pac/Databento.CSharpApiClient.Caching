@@ -48,9 +48,26 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                     await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
                     logger.AssertLogged(LogLevel.Debug, "Serving cbbo-1m of OPRA.PILLAR for " + Call, "2026-10-16T00:00:00Z to 2026-10-17T00:00:00Z", "cache mode Use");
-                    logger.AssertLogged(LogLevel.Information, "Requesting cbbo-1m of OPRA.PILLAR for " + Call, "UTC days 2026-10-16 to 2026-10-16", "from Databento");
+                    logger.AssertLogged(LogLevel.Information, "Requesting cbbo-1m of OPRA.PILLAR for " + Call + ", UTC day 2026-10-16 [2026-10-16T00:00:00Z to 2026-10-17T00:00:00Z) ...");
                     logger.AssertLogged(LogLevel.Information, "Got 2 cbbo-1m records of OPRA.PILLAR from Databento", "1 of the 1 symbol(s)", "Took 00:00:03");
                     logger.AssertLogged(LogLevel.Debug, "Saved " + Call + " 2026-10-16 cbbo-1m with 2 records as " + Path.GetFileName(fixture.DayFilePath(CacheFixture.Cbbo, Call, Day)));
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task GetCbbo1mAsync_TwoDaysNotCached_LogsTheFirstAndLastDayAndTheHalfOpenWindow()
+        {
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            {
+                FakeLogger logger = new FakeLogger();
+                using(CachedDatabentoClient client = fixture.CreateClient(options => options.Logger = logger))
+                {
+                    fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
+
+                    await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd.AddDays(1));
+
+                    logger.AssertLogged(LogLevel.Information, "Requesting cbbo-1m of OPRA.PILLAR for " + Call + ", UTC days 2026-10-16 to 2026-10-17 [2026-10-16T00:00:00Z to 2026-10-18T00:00:00Z) ...");
                 }
             }
         }
@@ -461,7 +478,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                         await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
-                        logger.AssertLogged(LogLevel.Information, "UTC days 2026-10-16 to 2026-10-16", "2026-10-16T00:00:00Z to 2026-10-17T00:00:00Z");
+                        logger.AssertLogged(LogLevel.Information, "UTC day 2026-10-16", "[2026-10-16T00:00:00Z to 2026-10-17T00:00:00Z)");
                         logger.AssertNotLogged("2569");
                     }
                 }

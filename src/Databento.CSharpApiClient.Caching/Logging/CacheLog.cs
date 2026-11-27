@@ -47,8 +47,8 @@ namespace Databento.CSharpApiClient.Caching.Logging
         [LoggerMessage(EventId = 1007, Level = LogLevel.Debug, Message = "Waiting for another request of the process downloading {Count} symbol-day(s) of {Schema} of {Dataset} ...")]
         public static partial void WaitingForDownload(this ILogger logger, int count, string schema, string dataset);
 
-        [LoggerMessage(EventId = 1008, Level = LogLevel.Information, Message = "Requesting {Schema} of {Dataset} for {Symbols}, UTC days {FirstDay:yyyy-MM-dd} to {LastDay:yyyy-MM-dd} ({Window}), from Databento ...")]
-        private static partial void Requesting(ILogger logger, string schema, string dataset, string symbols, DateTime firstDay, DateTime lastDay, string window);
+        [LoggerMessage(EventId = 1008, Level = LogLevel.Information, Message = "Requesting {Schema} of {Dataset} for {Symbols}, {Days} {Window} ...")]
+        private static partial void Requesting(ILogger logger, string schema, string dataset, string symbols, string days, string window);
 
         [LoggerMessage(EventId = 1009, Level = LogLevel.Information, Message = "Got {RecordCount} {Schema} records of {Dataset} from Databento, for {SymbolsWithRecords} of the {SymbolCount} symbol(s) requested. Took {Elapsed}")]
         public static partial void Downloaded(this ILogger logger, int recordCount, string schema, string dataset, int symbolsWithRecords, int symbolCount, TimeSpan elapsed);
@@ -295,13 +295,14 @@ namespace Databento.CSharpApiClient.Caching.Logging
         }
 
         /// <summary>
-        /// Logs a download request about to be sent to Databento
+        /// Logs a download request about to be sent to Databento: its UTC days, inclusive, and its window, whose end is exclusive as Databento's is
         /// </summary>
         public static void Requesting(this ILogger logger, string schema, string dataset, IReadOnlyList<string> symbols, DateTime firstDay, DateTime lastDay, DateTime startUtc, DateTime endUtc)
         {
             if(logger.IsEnabled(LogLevel.Information))
             {
-                Requesting(logger, schema, dataset, DescribeSymbols(symbols), firstDay, lastDay, Invariant($"{startUtc:yyyy-MM-ddTHH:mm:ssZ} to {endUtc:yyyy-MM-ddTHH:mm:ssZ}"));
+                string days = firstDay == lastDay ? Invariant($"UTC day {firstDay:yyyy-MM-dd}") : Invariant($"UTC days {firstDay:yyyy-MM-dd} to {lastDay:yyyy-MM-dd}");
+                Requesting(logger, schema, dataset, DescribeSymbols(symbols), days, Invariant($"[{startUtc:yyyy-MM-ddTHH:mm:ssZ} to {endUtc:yyyy-MM-ddTHH:mm:ssZ})"));
             }
         }
 
