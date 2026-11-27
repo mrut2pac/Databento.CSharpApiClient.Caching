@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-27
+
 ### Changed
 - The download request line (1008) writes its window half-open, as Databento reads it, names a single day once and no longer ends with ", from Databento": "Requesting cbbo-1m of OPRA.PILLAR for SPXW  260223C07035000, UTC day 2026-02-20 [2026-02-20T00:00:00Z to 2026-02-21T00:00:00Z) ...", or "UTC days 2026-02-20 to 2026-02-23" for several. Its structured `FirstDay` and `LastDay` properties become one `Days` string. The request itself is unchanged: its end was already exclusive.
 
@@ -100,7 +102,8 @@ The first release, built on `Databento.CSharpApiClient` 2.6.0.
 - `DatabentoArchiveCompactor`: folds day files into Parquet, one archive per dataset, schema, group and month, as a full file and at most one delta. OPRA options are grouped by their parent (`SPXW.OPT`) and CME futures by theirs (`MNQ.FUT`). Each new file is checked against its sources, record by record by default (`ArchiveVerification`), before it is published and the files it replaces are deleted. Optional `IArchiveDayCheck`s flag suspect days in the report.
 - `DatabentoCacheBackup` and `DatabentoCacheRestore`: the whole cache as one tar with a SHA-256 manifest, kept in an `IBackupStore` (`LocalDirectoryBackupStore` for a local or synced folder) under a `BackupRetention`. A restore checks every file before it touches the cache, says what happens to the cache's own files (`ExistingCacheFiles`), and refuses while an `ICacheInUseChecker` reports the cache in use. A dry run of a restore unpacks and checks a backup without touching the cache.
 
-[Unreleased]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.4.0...v1.4.1
