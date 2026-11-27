@@ -11,6 +11,8 @@ A disk cache and Parquet archive on top of [Databento.CSharpApiClient](https://g
 ```
 src/
   Databento.CSharpApiClient.Caching/            ← the library, the NuGet package
+benchmarks/
+  Databento.CSharpApiClient.Caching.Benchmarks/ ← console app: synthetic data, times the cache, writes a Markdown report
 tests/
   Databento.CSharpApiClient.Caching.UnitTests/  ← deterministic, no network
   Databento.CSharpApiClient.Caching.IntegrationTests/  ← live Databento, costs money; Inconclusive without DATABENTO_API_KEY
