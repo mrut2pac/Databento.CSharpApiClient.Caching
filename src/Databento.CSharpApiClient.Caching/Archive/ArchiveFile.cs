@@ -159,7 +159,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
 
-            // a reader is kept open between reads, so it lets a compaction retire the file and a restore or a copy replace it
+            // a reader is kept open between reads, so it lets a compaction retire the file
             FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             try
             {
