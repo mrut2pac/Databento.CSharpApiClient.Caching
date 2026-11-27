@@ -20,7 +20,7 @@
     <!-- NuGet packaging -->
     <IsPackable>true</IsPackable>
     <PackageId>Databento.CSharpApiClient.Caching</PackageId>
-    <Version>1.5.0</Version>
+    <Version>1.6.0</Version>
     <Authors>Vardan Tovmasyan</Authors>
     <Description>A disk cache and Parquet archive for Databento.CSharpApiClient, so each day of Databento data is paid for once. The client's time-series calls served from per-symbol UTC day files, batch jobs for large ranges, a compactor that folds day files into Parquet any reader can query, and backup and restore of the whole cache.</Description>
     <PackageTags>databento;market-data;cache;parquet;trading;options;futures;historical</PackageTags>
@@ -30,6 +30,22 @@
     <RepositoryUrl>https://github.com/mrut2pac/Databento.CSharpApiClient.Caching</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReleaseNotes>
+v1.6.0 - 2026-11-27
+
+Added
+- EnsureCachedAsync (and the sync EnsureCached): makes sure the cache holds a range of symbol-days and returns no
+  records. Cached days are found by day file name and archive index with no record read; only the others are downloaded,
+  as a CacheMode.Use call would. Returns an EnsureCachedReport of what was cached, saved and still missing.
+
+Changed
+- The per-day Debug lines name the file without its folder.
+
+Fixed
+- An archive read no longer reopens its file and parses its whole Parquet footer: each file is kept open with its index.
+  One symbol-day read of an SPXW cbbo-1m month went from 0.8 s and 85 MB allocated to 2 to 3 ms and under 2 MB.
+- Shut the application down before a restore. A restore refuses, naming them, while archive files are open (best effort,
+  Windows), and checks once more just before it swaps the backup in.
+
 v1.5.0 - 2026-11-27
 
 Added
