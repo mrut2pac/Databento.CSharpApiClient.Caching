@@ -30,7 +30,7 @@ namespace Databento.CSharpApiClient.Caching
 
         /// <summary>
         /// Gets or sets what tells whether something is using the cache, such as a service holding a <see cref="CachedDatabentoClient"/> on
-        /// it; <c>null</c> for no check, in which case whatever uses the cache must be stopped before a restore.
+        /// it; <c>null</c> for no check. Whatever uses the cache must be stopped before a restore; on Windows the restore also refuses while an archive file is open, as a running client keeps them, but Linux shows no such thing.
         /// </summary>
         public ICacheInUseChecker InUseChecker { get; set; }
 
