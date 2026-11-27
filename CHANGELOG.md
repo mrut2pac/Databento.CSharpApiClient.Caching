@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-27
+
 ### Added
 - `EnsureCachedAsync` on `ICachedDatabentoClient` and `CachedDatabentoClient`, with `EnsureCached` in `CachedDatabentoClientExtensions`: makes sure the cache holds a range of symbol-days of a schema (named as Databento names it, e.g. `cbbo-1m`) and returns no records. It finds the cached days by day file name and archive index, reading no record, and downloads only the others as a `CacheMode.Use` time-series call would: chunked by `MaxSymbolsPerRequest`, saved under `SettleDelay`, the empty-day policy and condition guard, cut at the available end with `AvailableEndRefusal` as set, nothing kept in memory once saved. It returns an `EnsureCachedReport`: `AlreadyCached`, `Saved`, `PastAvailableEnd`, `NotSettled`, and `NotCached`, the symbol-days the cache still lacks. On `ICachedDatabentoClient` it has a default implementation that throws `NotSupportedException`. A batch request built from a `CacheMode.Use` call and a `CacheMode.CacheOnly` call read every cached record twice: 51 to 88 s per 34 to 44 option contracts on a fully archived cache, downloading nothing.
 
@@ -95,7 +97,8 @@ The first release, built on `Databento.CSharpApiClient` 2.6.0.
 - `DatabentoArchiveCompactor`: folds day files into Parquet, one archive per dataset, schema, group and month, as a full file and at most one delta. OPRA options are grouped by their parent (`SPXW.OPT`) and CME futures by theirs (`MNQ.FUT`). Each new file is checked against its sources, record by record by default (`ArchiveVerification`), before it is published and the files it replaces are deleted. Optional `IArchiveDayCheck`s flag suspect days in the report.
 - `DatabentoCacheBackup` and `DatabentoCacheRestore`: the whole cache as one tar with a SHA-256 manifest, kept in an `IBackupStore` (`LocalDirectoryBackupStore` for a local or synced folder) under a `BackupRetention`. A restore checks every file before it touches the cache, says what happens to the cache's own files (`ExistingCacheFiles`), and refuses while an `ICacheInUseChecker` reports the cache in use. A dry run of a restore unpacks and checks a backup without touching the cache.
 
-[Unreleased]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/compare/v1.3.0...v1.4.0
