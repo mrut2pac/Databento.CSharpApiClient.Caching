@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+- The download request line (1008) writes its window half-open, as Databento reads it, names a single day once and no longer ends with ", from Databento": "Requesting cbbo-1m of OPRA.PILLAR for SPXW  260223C07035000, UTC day 2026-02-20 [2026-02-20T00:00:00Z to 2026-02-21T00:00:00Z) ...", or "UTC days 2026-02-20 to 2026-02-23" for several. Its structured `FirstDay` and `LastDay` properties become one `Days` string. The request itself is unchanged: its end was already exclusive.
+
 ## [1.6.0] - 2026-11-27
 
 ### Added
