@@ -51,8 +51,8 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
             text.AppendLine("|---|---|--:|--:|--:|--:|--:|");
             AppendStep(text, results, "seed", step => Invariant($"{step.Values["DayFilesWritten"]:N0} day files, {step.Values["BytesWritten"] / 1e9:N2} GB"), step => Invariant($"{step.Values["DayFilesPerSecond"]:N0} files/s"));
             AppendStep(text, results, "compact", step => Invariant($"{step.Values["DayFilesAbsorbed"]:N0} day files into {step.Values["FullFilesWritten"]:N0} Parquet files, {step.Values["BytesBefore"] / 1e9:N2} GB to {step.Values["BytesAfter"] / 1e9:N2} GB"), step => Invariant($"{step.Values["DayFilesPerSecond"]:N0} files/s, {step.Values["RowsPerSecond"] / 1e6:N1} M rows/s"));
-            AppendStep(text, results, "backup", step => Invariant($"{step.Values["Files"]:N0} files, {step.Values["Bytes"] / 1e9:N2} GB"), step => Invariant($"{step.Values["MBPerSecond"]:N0} MB/s"));
-            AppendStep(text, results, "restore", step => Invariant($"{step.Values["Files"]:N0} files, {step.Values["Bytes"] / 1e9:N2} GB"), step => Invariant($"{step.Values["MBPerSecond"]:N0} MB/s"));
+            AppendStep(text, results, "backup", step => Invariant($"{step.Values["Files"]:N0} files, {step.Values["Bytes"] / 1e9:N2} GB"), step => MegabytesPerSecond(step.Values["MBPerSecond"]));
+            AppendStep(text, results, "restore", step => Invariant($"{step.Values["Files"]:N0} files, {step.Values["Bytes"] / 1e9:N2} GB"), step => MegabytesPerSecond(step.Values["MBPerSecond"]));
             AppendNotMeasuredNote(text, stepsTable);
 
             text.AppendLine();
@@ -107,10 +107,13 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
 
             AppendNotMeasuredNote(text, summaryTable);
 
-            if(results.TryGetValue("query-archive", out StepResult archive) && results.TryGetValue("query-restored", out StepResult restored))
+            // the restored copy is read against what was backed up: the archive when the backup came after a compaction, day files otherwise
+            bool restoredArchive = results.TryGetValue("compact", out StepResult compacted) && results.TryGetValue("backup", out StepResult backedUp) && compacted.FinishedUtc < backedUp.FinishedUtc;
+            string original = restoredArchive ? "archive" : "day files";
+            if(results.TryGetValue(restoredArchive ? "query-archive" : "query-dayfiles", out StepResult archive) && results.TryGetValue("query-restored", out StepResult restored))
             {
                 double[] ratios = restored.Queries
-                    .Select(pass => (Restored: pass, Original: archive.Queries.FirstOrDefault(original => original.Order == pass.Order && original.Readers == pass.Readers && original.Repeat == pass.Repeat)))
+                    .Select(pass => (Restored: pass, Original: archive.Queries.FirstOrDefault(before => before.Order == pass.Order && before.Readers == pass.Readers && before.Repeat == pass.Repeat)))
                     .Where(pair => pair.Original != null && pair.Original.MeanMs > 0)
                     .Select(pair => pair.Restored.MeanMs / pair.Original.MeanMs)
                     .ToArray();
@@ -120,7 +123,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
                     long checkedReads = restored.Queries.Where(pass => !pass.Repeat).Sum(pass => (long)pass.Queries);
                     string matched = restored.Values.TryGetValue("Mismatches", out double mismatches) ? Invariant($", {mismatches:N0} mismatched") : string.Empty;
                     text.AppendLine();
-                    text.AppendLine(Invariant($"After a backup and a restore, the restored archive was read with the same queries: {checkedReads:N0} reads checked against the generated records{matched}, and pass means from {ratios.Min() * 100:N0}% to {ratios.Max() * 100:N0}% of the original archive's."));
+                    text.AppendLine(Invariant($"After a backup and a restore, the restored copy was read with the same queries: {checkedReads:N0} reads checked against the generated records{matched}, and pass means from {ratios.Min() * 100:N0}% to {ratios.Max() * 100:N0}% of those on the {original} it was backed up from."));
                 }
             }
         }
@@ -173,6 +176,11 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
         private static string CacheName(string cache)
         {
             return cache == "dayfiles" ? "day files" : cache;
+        }
+
+        private static string MegabytesPerSecond(double rate)
+        {
+            return rate >= 10 ? Invariant($"{rate:N0} MB/s") : Invariant($"{rate:N1} MB/s");
         }
 
         private static string Records(double perSecond)
@@ -230,7 +238,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
         {
             if(results.TryGetValue(name, out StepResult step))
             {
-                TimeSpan time = TimeSpan.FromSeconds(step.Resources.ElapsedSeconds);
+                TimeSpan time = TimeSpan.FromSeconds(Math.Round(step.Resources.ElapsedSeconds));
                 text.AppendLine(Invariant($"| {name} | {what(step)} | {(time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss", System.Globalization.CultureInfo.InvariantCulture) : time.ToString(@"m\:ss", System.Globalization.CultureInfo.InvariantCulture))} | {rate(step)} | {Gigabytes(step.Resources.PeakWorkingSetMB)} | {step.Resources.PeakPrivateMemoryMB / 1024.0:N1} GB | {step.Resources.AverageCoresBusy:N1} |"));
             }
         }

@@ -11,6 +11,7 @@ A disk cache and Parquet archive for [Databento.CSharpApiClient](https://github.
 - **Batch jobs:** ranges too large for the time-series calls, priced first and kept under a cost cap.
 - **Archive:** a compactor folds the day files into Parquet that DuckDB, pandas or any Parquet reader can query.
 - **Backup and restore:** the whole cache as one checked tar.
+- **Performance:** about 2 ms to read a contract's day from day files, and about 3,500 reads a second with 8 readers; [measured](#performance) on 2 million synthetic contract-days, for day files and for the archive.
 
 See [CHANGELOG.md](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/CHANGELOG.md) for the version history.
 
@@ -103,6 +104,8 @@ For ranges too large for the time-series calls: it saves the final symbol-days t
 
 ## Compaction
 
+**Compaction is optional.** Day files are the fastest way to read a contract's day: in the [benchmark](#performance), a random read took 2.6 ms from day files against 62.7 ms from the archive, and 8 readers in random order made 3,578 reads a second against 27, with a fraction of the memory. A cache read mostly by contract-day can stay as day files. Compact it for fewer files and less disk (2.07 million day files became 102 Parquet files, 18.2 GB became 13.0 GB), for a backup and restore that take seconds rather than hours (42 s and 32 s for the archive, against 50 min and 1 h 51 min for the same data as day files), or to query it with DuckDB, pandas or any Parquet reader. A cache of day files backs up and restores as it is: set `MaxBackupDayFiles` above its count, or back up with `force: true`.
+
 ```csharp
 DatabentoArchiveCompactor compactor = new DatabentoArchiveCompactor(new ArchiveCompactorOptions
 {
@@ -146,6 +149,39 @@ A backup is one uncompressed tar of the whole cache root with a manifest of ever
 A restore unpacks the backup into the staging folder and checks every file and the tar's hash before it touches the cache. Then it clears the cache as `ExistingFiles` says and moves the backup's files in. By default (`Keep`) it deletes the archive files and keeps the cache's own day files, since they are served first and may be downloads made after the backup. For a cache whose files can't be trusted, such as ones a faulty release wrote, `MoveAside` moves everything into `<root>.bak_<yyyyMMddTHHmmss>` beside it and `Delete` deletes everything; either way the backup lands in a clean root, and day files downloaded since the backup are bought again when next asked for. While it runs, `RESTORE_IN_PROGRESS` in the cache root keeps new cached clients, compactions and backups from starting. Shut down the application that uses the cache before a restore: a running client is not seen, and it holds archive files open, which keeps the restore from moving folders on Windows. The restore refuses with an `InvalidOperationException`, before it touches anything, while an `ICacheInUseChecker` reports the application running, or while any archive file is open (it names them), as a running client keeps those it reads. That second check is best effort: it works on Windows, which refuses an exclusive open of a file another process holds, but not on Linux, which does not lock files, so there shut the application down or give the restore an `ICacheInUseChecker`. `DryRun` unpacks and checks a backup into `DryRunFolder` without touching the cache.
 
 Backups go wherever an `IBackupStore` keeps them; `LocalDirectoryBackupStore` is a local or synced folder, holding each backup's tar beside its hash in `sha256sum`'s format, so `sha256sum -c 20261119T021530.tar.sha256` checks one without the package.
+
+## Performance
+
+Measured with the benchmark app in [`benchmarks/`](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/benchmarks/Databento.CSharpApiClient.Caching.Benchmarks/README.md) on synthetic data: 740 trading days of SPXW and SPY options (cbbo-1m) and MES futures (bbo-1m), 2,074,220 contract-days and 811 million records. The machine was an AMD Ryzen 9 3900X (24 logical cores) with 64 GB RAM and a Corsair MP600 PRO LPX NVMe SSD, on Windows 10, .NET 8 and Server GC. The app generates its data from a seed and never calls Databento; run it to get the same report for your machine. The full reports, [compacted](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/benchmarks/report.md) and [kept as day files](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/benchmarks/report-dayfiles.md), have every pass, repeat passes, allocations and committed memory.
+
+Reading one contract's day, first pass on a new client:
+
+| Cache | Order | Readers | Mean | p99 | Reads/s | Peak working set |
+|---|---|--:|--:|--:|--:|--:|
+| day files | random | 1 | 2.6 ms | 7.2 ms | 378 | 314 MB |
+| day files | sequential | 1 | 1.8 ms | 2.9 ms | 540 | 335 MB |
+| day files | random | 8 | 2.2 ms | 4.0 ms | 3,578 | 345 MB |
+| day files | sequential | 8 | 2.3 ms | 5.0 ms | 3,429 | 351 MB |
+| archive | random | 1 | 62.7 ms | 1,131.8 ms | 16 | 7,668 MB |
+| archive | sequential | 1 | 2.0 ms | 3.4 ms | 494 | 6,872 MB |
+| archive | random | 8 | 291.2 ms | 2,809.1 ms | 27 | 11,891 MB |
+| archive | sequential | 8 | 28.6 ms | 708.6 ms | 280 | 8,740 MB |
+
+| Step | Time | Rate | Peak working set |
+|---|--:|--:|--:|
+| Compact 2,074,220 day files into 102 Parquet files, 18.16 GB to 12.99 GB | 32:52 | 1,052 files/s | — |
+| Back up the archive: 103 files, 12.99 GB | 0:42 | 298 MB/s | 0.1 GB |
+| Restore it | 0:32 | 392 MB/s | 0.1 GB |
+| Back up the day files, uncompacted: 2,074,221 files, 18.16 GB | 49:55 | 5.8 MB/s | 7.5 GB |
+| Restore them | 1:51:14 | 2.6 MB/s | 5.5 GB |
+
+— : not measured in that run; the benchmark app measures it when run again.
+
+Both restored copies were read again with the same queries, and every record matched what was generated: 8,000 reads of the restored archive and 8,000 of the restored day files.
+
+- **Day files are the fastest to read.** The archive comes close only for a single reader whose reads stay in one file; 8 readers of one file take turns on its single open reader (280 reads a second against 3,429 for day files). The client keeps at most 32 archive versions open with their indexes (a full file and its delta), one per dataset, schema, group and month; the benchmark's archive has 102 full files. A random read of a closed one opens it and parses its footer again. See [#38](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/38), [#41](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/41), [#42](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/42), [#44](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/44) and [#45](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/45) for the work on faster archive reads, and [#49](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/49) for a day-file format that reads about 12 times faster than gzipped JSON.
+- **The archive backs up and restores in seconds;** day files take far longer, since each is a tar entry of its own, checked and moved one by one.
+- The operating system's file cache serves part of each first pass, so these are not cold-disk reads. Synthetic quotes compress differently from real ones, 16 bytes a record in this archive.
 
 ## Logging
 

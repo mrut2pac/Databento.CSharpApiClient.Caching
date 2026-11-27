@@ -33,6 +33,8 @@ Set `WorkFolder` first: everything is written under it. The shipped settings nee
 | `verify` | Runs the queries against the restored cache. |
 | `report` | Writes `WorkFolder/report.md` from the saved results. |
 
+To measure a cache kept as day files instead, run `seed`, `query`, `backup`, `restore`, `verify` and `report` one at a time in a new `WorkFolder`, leaving out `compact`. The shipped settings then need about 60 GB at the peak (the day files, the backup's tar and the restored copy), and the backup and restore of 2 million day files take about 2 h 40 min on the machine in [report-dayfiles.md](../report-dayfiles.md). The two reports in [`benchmarks/`](..) are a run of each on the same seed and data: [report.md](../report.md), compacted, and [report-dayfiles.md](../report-dayfiles.md), kept as day files. The day-file query rows of both reports come from the day-file run, whose results measure the working set; the compacted run's own day-file queries predate that measure.
+
 Every query step also checks every field of each read against the records the generator makes for it, in a pass outside the timing, and fails if any differ. The data and the queries come from `Seed`, so two runs with the same settings generate and read the same records.
 
 The app runs at below-normal priority with Server GC, so other work on the machine keeps its share. The query timings include the operating system's file cache: the first pass on a new client may find files the previous pass read.
