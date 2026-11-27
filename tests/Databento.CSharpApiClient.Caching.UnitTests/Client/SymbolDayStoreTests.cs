@@ -90,22 +90,50 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             using(ArchiveCatalog catalog = new ArchiveCatalog(TimeProvider.System, (_, _) => { }, NullLogger.Instance))
             {
                 SymbolDayStore store = new SymbolDayStore(cache.Root, CacheMetadata.UtcCutoff, catalog, NullLogger.Instance);
-                // a file where the month folder should be: listing it fails as a share gone or a folder denied would
-                Directory.CreateDirectory(Path.GetDirectoryName(cache.CbboDirectory));
-                File.WriteAllText(cache.CbboDirectory, string.Empty);
-                CacheMonthFolder folder = store.GetMonth(CacheFixture.Opra, CacheFixture.Cbbo, Day);
+                // Windows: a file where the month folder should be fails its listing; elsewhere that reads as no folder, so the folder's
+                // permissions are taken away instead, as for a folder this process is denied
+                if(OperatingSystem.IsWindows())
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(cache.CbboDirectory));
+                    File.WriteAllText(cache.CbboDirectory, string.Empty);
+                }
+                else
+                {
+                    Directory.CreateDirectory(cache.CbboDirectory);
+                    File.SetUnixFileMode(cache.CbboDirectory, UnixFileMode.None);
+                }
 
+                CacheMonthFolder folder = store.GetMonth(CacheFixture.Opra, CacheFixture.Cbbo, Day);
                 Exception thrown = null;
+                try
+                {
+                    if(!OperatingSystem.IsWindows() && Directory.GetFiles(cache.CbboDirectory) != null)
+                    {
+                        Assert.Inconclusive("The process can list a folder with no permissions, as root can: the denied folder cannot be made here.");
+                    }
+                }
+                catch(UnauthorizedAccessException)
+                {
+                    // the folder is denied, as the test needs
+                }
+
                 try
                 {
                     await store.ReadAsync(CachedSchemas.Cbbo1Min, folder, Call, Day, CancellationToken.None);
                 }
-                catch(IOException ex)
+                catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
                 {
                     thrown = ex;
                 }
+                finally
+                {
+                    if(!OperatingSystem.IsWindows())
+                    {
+                        File.SetUnixFileMode(cache.CbboDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                    }
+                }
 
-                Assert.IsInstanceOfType(thrown, typeof(IOException));
+                Assert.IsNotNull(thrown, "a month folder that cannot be listed fails the read rather than reading as not cached");
                 Assert.IsNotInstanceOfType(thrown, typeof(DirectoryNotFoundException));
             }
         }
