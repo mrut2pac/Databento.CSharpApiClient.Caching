@@ -3,6 +3,7 @@
 [![NuGet](https://img.shields.io/nuget/v/Databento.CSharpApiClient.Caching.svg)](https://www.nuget.org/packages/Databento.CSharpApiClient.Caching)
 [![CI](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/blob/main/LICENSE)
+[![Databento](https://img.shields.io/badge/Databento-Historical%20API-474BD7)](https://databento.com)
 
 A disk cache and Parquet archive for [Databento.CSharpApiClient](https://github.com/mrut2pac/Databento.CSharpApiClient), so each day of Databento data is paid for once.
 
