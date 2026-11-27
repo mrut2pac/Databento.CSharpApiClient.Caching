@@ -28,6 +28,13 @@ namespace Databento.CSharpApiClient.Caching.Archive
         internal const int MaxCachedVersions = 32;
 
         /// <summary>
+        /// How many times a read lists a month folder: once, and once more when a listed file is gone. The compactor publishes the next version
+        /// before it retires a file, so the second listing finds it; only another compaction finished between that listing and the open would
+        /// need a third, and compactions take the root's lock and seconds each, against the milliseconds between the two.
+        /// </summary>
+        private const int ListingAttempts = 2;
+
+        /// <summary>
         /// How long an unreadable file is left out without reading it again, so a run asking for its days does not parse it each time, while
         /// one repaired in place is served again soon after
         /// </summary>
@@ -109,8 +116,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
 
             string prefix = ArchiveFileName.GetSearchPrefix(folder.Dataset, folder.Schema, ArchiveGroup.Of(folder.Dataset, symbol), folder.Year, folder.Month, folder.Cutoff);
 
-            // the compactor retires a version after publishing the next, so a file gone between listing and opening has a successor
-            for(int attempt = 0; attempt < 2; ++attempt)
+            for(int attempt = 0; attempt < ListingAttempts; ++attempt)
             {
                 LoadedIndex file = null;
                 TRecord[] records;
@@ -185,7 +191,7 @@ namespace Databento.CSharpApiClient.Caching.Archive
             ArgumentNullException.ThrowIfNull(folder);
 
             string prefix = ArchiveFileName.GetSearchPrefix(folder.Dataset, folder.Schema, ArchiveGroup.Of(folder.Dataset, symbol), folder.Year, folder.Month, folder.Cutoff);
-            for(int attempt = 0; attempt < 2; ++attempt)
+            for(int attempt = 0; attempt < ListingAttempts; ++attempt)
             {
                 try
                 {
