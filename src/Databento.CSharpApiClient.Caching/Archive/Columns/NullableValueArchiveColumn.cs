@@ -55,6 +55,11 @@ namespace Databento.CSharpApiClient.Caching.Archive.Columns
             }
         }
 
+        internal override void Copy(TSource source, TRecord target)
+        {
+            this.setValue(target, this.getValue(source));
+        }
+
         internal override bool HasSameValue(TSource expected, TSource actual)
         {
             TValue? expectedValue = this.getValue(expected);

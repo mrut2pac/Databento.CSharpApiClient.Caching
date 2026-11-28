@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Cache;
 using Databento.CSharpApiClient.DataModel;
+using Databento.CSharpApiClient.DataModel.Dbn;
 using Databento.CSharpApiClient.DataModel.Json;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -133,7 +134,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                 Assert.AreEqual(2, report.SymbolDaysSaved);
                 string path = fixture.DayFilePath(Schema.Bbo1Min, "MNQZ6", First, Datasets.GlbxMdp3);
-                BboRecordJson[] records = await DayFile.ReadAsync(path, JsonRecordReader.ReadBboAsync, CancellationToken.None);
+                BboRecordDbn[] records = await DayFile.ReadAsync(path, DayFileFormats.Bbo1Min, CancellationToken.None);
                 Assert.AreEqual(1390, records.Length);
                 Assert.IsTrue(records.All(record => ((IBboRecord)record).TsReceivedUtc.Value.Date == First));
             }
@@ -148,7 +149,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 BatchReport report = await client.IngestBatchFolderAsync(Sample("F_dbn_zstd_day_statistics"));
 
                 Assert.AreEqual(4, report.SymbolDaysSaved);
-                StatisticsRecordJson[] records = await DayFile.ReadAsync(fixture.DayFilePath(Schema.Statistics, Put, Second), JsonRecordReader.ReadStatisticsAsync, CancellationToken.None);
+                StatisticsRecordDbn[] records = await DayFile.ReadAsync(fixture.DayFilePath(Schema.Statistics, Put, Second), DayFileFormats.Statistics, CancellationToken.None);
                 Assert.AreEqual(9, records.Length);
             }
         }
@@ -344,7 +345,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 File.WriteAllText(Path.Combine(mixed, "opra-pillar-20261015.cbbo-1m.csv"), "ts_recv\n");
                 await Assert.ThrowsExceptionAsync<InvalidDataException>(() => client.IngestBatchFolderAsync(mixed));
 
-                Assert.AreEqual(0, Directory.Exists(fixture.Cache.CbboDirectory) ? Directory.GetFiles(fixture.Cache.CbboDirectory).Length : 0);
+                Assert.AreEqual(0, Directory.Exists(fixture.Cache.CbboDirectory) ? Directory.GetFiles(fixture.Cache.CbboDirectory, "*", SearchOption.AllDirectories).Length : 0);
             }
         }
 
@@ -401,13 +402,13 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
             return fixture.ReadCbboDayFile(symbol, day).Length;
         }
 
-        private static TcbboRecordJson[] ReadTcbbo(CachedClientFixture fixture, string symbol, DateTime day)
+        private static TcbboRecordDbn[] ReadTcbbo(CachedClientFixture fixture, string symbol, DateTime day)
         {
             string path = fixture.DayFilePath(Schema.Tcbbo, symbol, day);
-            return File.Exists(path) ? DayFile.ReadAsync(path, JsonRecordReader.ReadTcbboAsync, CancellationToken.None).GetAwaiter().GetResult() : null;
+            return File.Exists(path) ? DayFile.ReadAsync(path, DayFileFormats.Tcbbo, CancellationToken.None).GetAwaiter().GetResult() : null;
         }
 
-        private static void AssertSameRecords(CbboRecordJson[] expected, CbboRecordJson[] actual)
+        private static void AssertSameRecords(CbboRecordDbn[] expected, CbboRecordDbn[] actual)
         {
             Assert.AreEqual(expected.Length, actual.Length);
             for(int i = 0; i < expected.Length; ++i)

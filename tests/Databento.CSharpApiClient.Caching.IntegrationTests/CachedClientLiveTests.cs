@@ -207,7 +207,7 @@ namespace Databento.CSharpApiClient.Caching.IntegrationTests
 
         private static string DayFilePath(string root, string dataset, string schema, string symbol, DateTimeOffset day)
         {
-            return Path.Combine(DayFileName.GetMonthDirectory(root, dataset, schema, day.Year, day.Month), DayFileName.Format(symbol, day.UtcDateTime, CacheMetadata.UtcCutoff));
+            return DayFileName.GetPath(DayFileName.GetMonthDirectory(root, dataset, schema, day.Year, day.Month), symbol, day.UtcDateTime, CacheMetadata.UtcCutoff);
         }
     }
 }

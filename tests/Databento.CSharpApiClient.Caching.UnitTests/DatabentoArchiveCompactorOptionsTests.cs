@@ -553,7 +553,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 new[] { TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(40), TimeSpan.FromMinutes(1) },
                 this.clock.Waits.ToArray(),
                 "a wait after each failed attempt but the last");
-            CollectionAssert.AreEqual(new[] { Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz") }, report.FilesLeft.ToArray());
+            CollectionAssert.AreEqual(new[] { Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "16", "SPXW%20%20261016C06600000_2026-10-16.UTC.dbn.zst") }, report.FilesLeft.ToArray());
             Assert.AreEqual(0L, report.DayFilesDeleted);
             Assert.IsTrue(File.Exists(dayFile));
         }

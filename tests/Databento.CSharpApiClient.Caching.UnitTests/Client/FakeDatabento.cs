@@ -18,7 +18,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 {
     /// <summary>
     /// Databento's historical API as the cached client uses it, in memory: time series from the records added, filtered by symbol and by
-    /// <c>ts_recv</c> (<c>ts_event</c> for OHLCV) over the range, as JSON lines or as a CBBO DBN stream; the dataset range and conditions;
+    /// <c>ts_recv</c> (<c>ts_event</c> for OHLCV) over the range, as JSON lines or as a DBN stream; the dataset range and conditions;
     /// and symbology from the listings given, a symbol without one being not found. A time-series request starting at or ending past the
     /// schema's available end, or naming an unlisted symbol, is refused as Databento refuses it. Every request is recorded.
     /// </summary>
@@ -275,7 +275,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
             if(request.Fields["encoding"] == "dbn")
             {
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(FakeDbnStream.BuildCbbo1s(request, answer.Cast<ICbboRecord>().ToList())) };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(FakeDbnStream.Build(request, request.Fields["schema"], answer)) };
             }
 
             // a one-symbol answer is not mapped: its records carry no symbol

@@ -49,6 +49,14 @@ namespace Databento.CSharpApiClient.Caching.Archive.Columns
         internal abstract void Fill(object values, int firstRow, TRecord[] target, int targetOffset, int count);
 
         /// <summary>
+        /// Sets the column's value of one record on another, such as a JSON record's on the DBN record it is converted to
+        /// </summary>
+        /// <param name="source">Record the value is taken from</param>
+        /// <param name="target">Record the value is set on</param>
+        /// <exception cref="OverflowException">The source cannot give the value, see <see cref="FindUnstorableValue"/></exception>
+        internal abstract void Copy(TSource source, TRecord target);
+
+        /// <summary>
         /// Whether two records hold the same value as the column stores it, so a record read back can be checked against the one written
         /// </summary>
         /// <param name="expected">Record written</param>

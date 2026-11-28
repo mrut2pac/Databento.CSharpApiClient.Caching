@@ -13,6 +13,7 @@ using Databento.CSharpApiClient.Caching.Archive;
 using Databento.CSharpApiClient.Caching.Archive.Schemas;
 using Databento.CSharpApiClient.Caching.Cache;
 using Databento.CSharpApiClient.Caching.UnitTests.Archive;
+using Databento.CSharpApiClient.Caching.UnitTests.Cache;
 using Databento.CSharpApiClient.DataModel;
 using Databento.CSharpApiClient.DataModel.Dbn;
 using Databento.CSharpApiClient.DataModel.Json;
@@ -128,15 +129,37 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         /// <summary>
-        /// Saves a day file as the cache saves a download, replacing any there
+        /// Saves a day file as the cache saves a download, in its day folder, replacing any there
         /// </summary>
         /// <returns>The day file's path</returns>
-        public string SaveDayFile<TJson>(string dataset, string schema, string rawSymbol, DateTime date, params TJson[] records)
+        public string SaveDayFile<TRecord>(string dataset, string schema, string rawSymbol, DateTime date, params TRecord[] records)
+            where TRecord : IRecord
         {
-            string path = Path.Combine(this.MonthDirectory(dataset, schema, date.Year, date.Month), DayFileName.Format(rawSymbol, date, CacheMetadata.UtcCutoff));
-            Assert.IsTrue(DayFile.WriteAsync(path, records, overwrite: true, CancellationToken.None).GetAwaiter().GetResult());
+            string path = DayFileName.GetPath(this.MonthDirectory(dataset, schema, date.Year, date.Month), rawSymbol, date, CacheMetadata.UtcCutoff);
+            Assert.IsTrue(TestDayFiles.Write(path, dataset, schema, rawSymbol, date, records.Cast<IRecord>()));
 
             return path;
+        }
+
+        /// <summary>
+        /// Saves a legacy day file in its month folder, as format version 1 saved a download
+        /// </summary>
+        /// <returns>The legacy day file's path</returns>
+        public string SaveLegacyDayFile<TJson>(string dataset, string schema, string rawSymbol, DateTime date, params TJson[] records)
+        {
+            string path = DayFileName.GetLegacyPath(this.MonthDirectory(dataset, schema, date.Year, date.Month), rawSymbol, date, CacheMetadata.UtcCutoff);
+            TestDayFiles.WriteLegacy(path, records);
+
+            return path;
+        }
+
+        /// <summary>
+        /// Saves a legacy CBBO day file of one record a minute at the prices given; none for an empty day
+        /// </summary>
+        /// <returns>The legacy day file's path</returns>
+        public string SaveLegacyCbbo(string rawSymbol, DateTime date, params double[] prices)
+        {
+            return this.SaveLegacyDayFile(Opra, Cbbo, rawSymbol, date, prices.Select((price, minute) => CbboRecord(date, price, minute)).ToArray());
         }
 
         /// <summary>
@@ -160,7 +183,19 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         /// <summary>
-        /// Gets the bytes of a day file that holds no JSON array, by what it holds instead: "an empty file", "an empty gzip payload",
+        /// Saves a legacy CBBO day file of one record at 6600.5, changed by <paramref name="change"/>, such as into a record no DBN day
+        /// file can hold
+        /// </summary>
+        public string SaveChangedLegacyCbbo(string rawSymbol, DateTime date, Action<CbboRecordJson> change)
+        {
+            CbboRecordJson record = CbboRecord(date, 6600.5, 0);
+            change(record);
+
+            return this.SaveLegacyDayFile(Opra, Cbbo, rawSymbol, date, record);
+        }
+
+        /// <summary>
+        /// Gets the bytes of a legacy day file that holds no JSON array, by what it holds instead: "an empty file", "an empty gzip payload",
         /// "whitespace only" or "JSON lines" (a CBBO record on a line of its own)
         /// </summary>
         public static byte[] NoArrayDayFile(string holding)
@@ -177,21 +212,25 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         /// <summary>
-        /// Writes a CBBO day file that is no gzip
+        /// Writes a CBBO day file that is no zstd
         /// </summary>
         public string WriteUnreadableCbbo(string rawSymbol, DateTime date)
         {
-            return this.WriteCbboBytes(rawSymbol, date, new byte[] { 1, 2, 3 });
+            string path = DayFileName.GetPath(this.CbboDirectory, rawSymbol, date, CacheMetadata.UtcCutoff);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllBytes(path, new byte[] { 1, 2, 3 });
+
+            return path;
         }
 
         /// <summary>
-        /// Writes a CBBO day file of the bytes given, such as one that holds no JSON array
+        /// Writes a legacy CBBO day file of the bytes given, such as one that holds no JSON array
         /// </summary>
-        /// <returns>The day file's path</returns>
-        public string WriteCbboBytes(string rawSymbol, DateTime date, byte[] bytes)
+        /// <returns>The legacy day file's path</returns>
+        public string WriteLegacyCbboBytes(string rawSymbol, DateTime date, byte[] bytes)
         {
             Directory.CreateDirectory(this.CbboDirectory);
-            string path = Path.Combine(this.CbboDirectory, DayFileName.Format(rawSymbol, date, CacheMetadata.UtcCutoff));
+            string path = DayFileName.GetLegacyPath(this.CbboDirectory, rawSymbol, date, CacheMetadata.UtcCutoff);
             File.WriteAllBytes(path, bytes);
 
             return path;
@@ -274,11 +313,11 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         /// <summary>
-        /// Gets the paths of the day files in a folder; none when the folder is missing
+        /// Gets the paths of the day files and legacy day files under a folder, its day folders included; none when the folder is missing
         /// </summary>
         public string[] DayFiles(string directory)
         {
-            return Directory.Exists(directory) ? Directory.GetFiles(directory, "*" + DayFileName.Extension) : Array.Empty<string>();
+            return Directory.Exists(directory) ? Directory.GetFiles(directory, "*", SearchOption.AllDirectories).Where(DayFileName.IsDayFile).Order(StringComparer.Ordinal).ToArray() : Array.Empty<string>();
         }
 
         public void Dispose()

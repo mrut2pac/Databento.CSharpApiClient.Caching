@@ -43,9 +43,9 @@ namespace Databento.CSharpApiClient.Caching
         public string CacheRoot { get; set; }
 
         /// <summary>
-        /// Gets or sets how records are downloaded. Default <see cref="DatabentoTransport.Json"/>.
+        /// Gets or sets how records are downloaded. Default <see cref="DatabentoTransport.Dbn"/>, the records day files hold.
         /// </summary>
-        public DatabentoTransport Transport { get; set; } = DatabentoTransport.Json;
+        public DatabentoTransport Transport { get; set; } = DatabentoTransport.Dbn;
 
         /// <summary>
         /// Gets or sets when a final day answered with no records is saved as empty. Default <see cref="EmptyDayPolicy.CacheWhenNotListed"/>.

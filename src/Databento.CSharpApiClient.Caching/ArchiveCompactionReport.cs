@@ -67,7 +67,7 @@ namespace Databento.CSharpApiClient.Caching
         public long DayFilesAbsorbed { get; private set; }
 
         /// <summary>
-        /// Gets the number of absorbed, matching or dropped day files deleted from the cache.
+        /// Gets the number of absorbed, matching or dropped day files deleted from the cache, with the legacy day files they superseded.
         /// </summary>
         public long DayFilesDeleted { get; private set; }
 
@@ -97,8 +97,8 @@ namespace Databento.CSharpApiClient.Caching
         public long DayFilesTooRecent { get; private set; }
 
         /// <summary>
-        /// Gets the number of absorbed day files kept because they changed, or were gone, by the time the run would delete them; a day
-        /// downloaded again is absorbed by the next run.
+        /// Gets the number of absorbed day files, and legacy day files they superseded, kept because they changed, or were gone, by the
+        /// time the run would delete them; a day downloaded again is absorbed by the next run.
         /// </summary>
         public long DayFilesChangedDuringRun { get; private set; }
 

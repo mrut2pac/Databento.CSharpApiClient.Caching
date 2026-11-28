@@ -92,7 +92,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         public async Task GetCbbo1mAsync_AnswerHoldsASymbolNotAskedFor_ItsRecordsAreLeftOut()
         {
             using(CachedClientFixture fixture = new CachedClientFixture())
-            using(CachedDatabentoClient client = fixture.CreateClient())
+            using(CachedDatabentoClient client = fixture.CreateClient(options => options.Transport = DatabentoTransport.Json))
             {
                 string other = "SPXW  261016C06700000";
                 fixture.Databento.List(other);

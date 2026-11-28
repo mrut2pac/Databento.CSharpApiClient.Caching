@@ -7,6 +7,7 @@ using System.Threading;
 
 using Databento.CSharpApiClient.Caching.Cache;
 using Databento.CSharpApiClient.DataModel;
+using Databento.CSharpApiClient.DataModel.Dbn;
 using Databento.CSharpApiClient.DataModel.Json;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -99,21 +100,29 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         }
 
         /// <summary>
-        /// Gets the path of a day file
+        /// Gets the path of a day file, in its day folder
         /// </summary>
         public string DayFilePath(string schema, string symbol, DateTime date, string dataset = CacheFixture.Opra)
         {
-            return Path.Combine(this.Cache.MonthDirectory(dataset, schema, date.Year, date.Month), DayFileName.Format(symbol, date, CacheMetadata.UtcCutoff));
+            return DayFileName.GetPath(this.Cache.MonthDirectory(dataset, schema, date.Year, date.Month), symbol, date, CacheMetadata.UtcCutoff);
+        }
+
+        /// <summary>
+        /// Gets the path of a legacy day file, in its month folder
+        /// </summary>
+        public string LegacyDayFilePath(string schema, string symbol, DateTime date, string dataset = CacheFixture.Opra)
+        {
+            return DayFileName.GetLegacyPath(this.Cache.MonthDirectory(dataset, schema, date.Year, date.Month), symbol, date, CacheMetadata.UtcCutoff);
         }
 
         /// <summary>
         /// Reads a CBBO day file's records
         /// </summary>
         /// <returns>The records, or <c>null</c> when there is no such day file</returns>
-        public CbboRecordJson[] ReadCbboDayFile(string symbol, DateTime date, string schema = CacheFixture.Cbbo)
+        public CbboRecordDbn[] ReadCbboDayFile(string symbol, DateTime date, string schema = CacheFixture.Cbbo)
         {
             string path = this.DayFilePath(schema, symbol, date);
-            return File.Exists(path) ? DayFile.ReadAsync(path, JsonRecordReader.ReadCbboAsync, CancellationToken.None).GetAwaiter().GetResult() : null;
+            return File.Exists(path) ? DayFile.ReadAsync(path, schema == CacheFixture.Cbbo ? DayFileFormats.Cbbo1Min : DayFileFormats.Cbbo1Sec, CancellationToken.None).GetAwaiter().GetResult() : null;
         }
 
         /// <summary>

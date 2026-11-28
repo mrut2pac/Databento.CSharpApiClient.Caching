@@ -155,7 +155,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             FakeLogEntry[] warnings = this.logger.Find(LogLevel.Warning, "suspect day(s)");
             Assert.AreEqual(1, warnings.Length);
             StringAssert.Contains(warnings[0].Message, "2 suspect day(s) in " + GroupName);
-            StringAssert.Contains(warnings[0].Message, "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz");
+            StringAssert.Contains(warnings[0].Message, "SPXW%20%20261016C06600000_2026-10-16.UTC.dbn.zst");
         }
 
         [TestMethod]

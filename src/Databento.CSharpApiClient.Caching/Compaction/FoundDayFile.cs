@@ -44,5 +44,21 @@ namespace Databento.CSharpApiClient.Caching.Compaction
         /// Gets the last write time (UTC) when the run found it.
         /// </summary>
         public DateTime LastWriteUtc { get; }
+
+        /// <summary>
+        /// Gets the legacy day file of the same symbol-day this day file supersedes, retired with it; <c>null</c> when there is none.
+        /// </summary>
+        public FoundDayFile Superseded { get; private init; }
+
+        /// <summary>
+        /// Gets this day file superseding a legacy day file of its symbol-day
+        /// </summary>
+        public FoundDayFile Superseding(FoundDayFile legacy)
+        {
+            return new FoundDayFile(this.Path, this.RawSymbol, this.Date, this.Length, this.LastWriteUtc)
+            {
+                Superseded = legacy,
+            };
+        }
     }
 }

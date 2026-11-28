@@ -6,6 +6,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Format
+- Day files are DBN, zstd-compressed (`.dbn.zst`), written with the client's `DbnWriter` and read with its `DbnReader`, instead of a gzipped JSON array (`.json.gz`). Each file's metadata (DBN version 3) names its dataset, schema, UTC day and symbol, and maps each instrument id of its records to the symbol, so Databento's `dbn` CLI and Python `databento` package read it as it is. Parsing JSON was most of a day file's read: a probe of 5,000 synthetic cbbo-1m days read DBN about 12 times faster than gzipped JSON, in files 9% smaller ([#49](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/49)).
+- Day files go into a folder per UTC day, `dataset/schema/yyyy/MM/dd/`, so a month folder holds at most 31 day folders, its archive files and any legacy day files. A read that misses its day file lists that folder for its archive files, which no longer means walking every day file of the month once the legacy ones are compacted, and Explorer, antivirus and sync tools no longer meet folders of 60,000 files, past FAT32's limit of about 65,000 entries ([#43](https://github.com/mrut2pac/Databento.CSharpApiClient.Caching/issues/43)).
+- Caches written before keep working with no rewrite. A read takes the day file in the day folder first, then a `.json.gz` day file in the month folder, then the archive, so a day served from the archive pays two failed opens first. The compactor absorbs both kinds; a legacy day file of a day that also has a DBN day file is retired with it, the DBN file being the one archived. A `CacheMode.Bypass` replacing a legacy day writes the DBN day file and deletes the legacy one. Backups hold both kinds, and a backup of an earlier version restores as it is. The `.json.gz` fallback is to be retired in 2.0.0.
+- The format version in `metadata.json` goes from 1 to 2. A version 1 cache is marked version 2, with no day file rewritten, when the cached client opens it, a compaction that is no dry run starts on it, or a version 1 backup is restored; a dry run and a backup leave it as it is. From then on an older build refuses it rather than taking its DBN day files for missing days. A version 1 cache whose `metadata.json` cannot be rewritten is read, but nothing is saved into it: the save throws an `IOException`. The mark writes the file anew, so any field another build added to it is dropped. Going back to an older build is not supported.
+- Compaction deletes the day files it absorbs and leaves their day folders, empty, in the month folder.
+
+### Changed
+- `DatabentoTransport.Dbn` is the default `Transport`, so downloads arrive as the DBN records day files hold. With `Json`, records are converted to DBN records as they are downloaded.
+- The time-series calls return the client's DBN record types (`CbboRecordDbn` and so on) behind the record interfaces, whichever the transport and whether served from a day file, a legacy day file or the archive. Breaking for code that type-tests or casts: a returned `ICbboRecord` cast to `CbboRecordJson` must use the interface or the DBN type instead.
+- A day whose records hold a value DBN cannot hold, such as an undefined side, is served but not saved, with a Warning (1031); a bypass over a cached day then keeps the cached day.
+- A JSON record is converted to the DBN type through the values the archive stores. One whose value the record interface cannot give (a JSON number past the interface's range) fails the JSON download, or JSON batch file, it is in. A legacy day file holding one is left on disk, as the compactor leaves it, and its day is read as not cached.
+- Depends on Databento.CSharpApiClient 2.9.0, for `DbnWriter`.
+
 ## [1.6.2] - 2026-11-28
 
 ### Fixed

@@ -24,7 +24,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Backup
         /// <summary>
         /// The <c>metadata.json</c> a cache this package wrote holds
         /// </summary>
-        public static readonly KeyValuePair<string, byte[]> Metadata = Entry("metadata.json", Encoding.UTF8.GetBytes("{\n  \"format_version\": 1,\n  \"day_cutoff\": \"UTC\"\n}"));
+        public static readonly KeyValuePair<string, byte[]> Metadata = Entry("metadata.json", Encoding.UTF8.GetBytes("{\n  \"format_version\": 2,\n  \"day_cutoff\": \"UTC\"\n}"));
+
+        /// <summary>
+        /// The <c>metadata.json</c> a cache of format version 1 holds, of legacy day files only
+        /// </summary>
+        public static readonly KeyValuePair<string, byte[]> Version1Metadata = Entry("metadata.json", Encoding.UTF8.GetBytes("{\n  \"format_version\": 1,\n  \"day_cutoff\": \"UTC\"\n}"));
 
         /// <summary>
         /// Gets the SHA-256 of some bytes, lowercase hex

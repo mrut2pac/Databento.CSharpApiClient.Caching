@@ -3,6 +3,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -95,6 +96,91 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             CollectionAssert.AreEqual(new[] { 6600.25, 6600.5, 6600.75 }, (await this.cache.ReadServedCbboAsync(Call, October16)).Select(record => record.Price).ToArray());
             Assert.AreEqual(12.5, (await this.cache.ReadServedCbboAsync(Put, October16)).Single().Price);
             Assert.AreEqual(0, (await this.cache.ReadServedCbboAsync(Call, October15)).Length, "an empty day stays an empty, final day");
+        }
+
+        [TestMethod]
+        public async Task Compact_DayFilesAndLegacyDayFilesOfAMonth_AreAbsorbedTogetherAndDeleted()
+        {
+            // a version 1 cache that has had new days saved since
+            string[] dayFiles =
+            {
+                this.cache.SaveLegacyCbbo(Call, October15, 6601.5),
+                this.cache.SaveLegacyCbbo(Put, October16, 12.5),
+                this.cache.SaveCbbo(Call, October16, 6600.25, 6600.5),
+            };
+
+            ArchiveCompactionReport report = await this.CompactAsync();
+
+            Assert.AreEqual(1, report.GroupsCompacted);
+            Assert.AreEqual(3L, report.DayFilesAbsorbed);
+            Assert.AreEqual(3L, report.DayFilesDeleted);
+            Assert.AreEqual(0, report.UnreadableDayFiles.Count);
+            Assert.AreEqual(0, this.cache.DayFiles(this.cache.CbboDirectory).Length, "every absorbed day file is deleted, legacy or not");
+            CollectionAssert.AreEqual(new[] { NewFullFile }, this.cache.CbboArchiveFileNames());
+            Assert.AreEqual(6601.5, (await this.cache.ReadServedCbboAsync(Call, October15)).Single().Price);
+            Assert.AreEqual(12.5, (await this.cache.ReadServedCbboAsync(Put, October16)).Single().Price);
+            CollectionAssert.AreEqual(new[] { 6600.25, 6600.5 }, (await this.cache.ReadServedCbboAsync(Call, October16)).Select(record => record.Price).ToArray());
+            Assert.IsTrue(dayFiles.All(path => !File.Exists(path)));
+        }
+
+        [TestMethod]
+        public async Task Compact_DayFileAndLegacyDayFileOfOneSymbolDay_ArchivesTheDayFileAndRetiresBoth()
+        {
+            // a bypass whose delete of the legacy day file failed: the day file is what the cache serves
+            string legacy = this.cache.SaveLegacyCbbo(Call, October16, 6601.5);
+            string dayFile = this.cache.SaveCbbo(Call, October16, 6600.25, 6600.5);
+
+            ArchiveCompactionReport report = await this.CompactAsync();
+
+            Assert.AreEqual(1, report.GroupsCompacted);
+            Assert.AreEqual(1L, report.DayFilesAbsorbed);
+            Assert.AreEqual(2L, report.DayFilesDeleted);
+            CollectionAssert.AreEqual(new[] { 6600.25, 6600.5 }, (await this.cache.ReadServedCbboAsync(Call, October16)).Select(record => record.Price).ToArray());
+            Assert.IsFalse(File.Exists(dayFile));
+            Assert.IsFalse(File.Exists(legacy));
+        }
+
+        [TestMethod]
+        public async Task Compact_UnreadableDayFileOverALegacyDayFile_LeavesBoth()
+        {
+            // the legacy day file is retired only with the day file that supersedes it
+            string legacy = this.cache.SaveLegacyCbbo(Put, October16, 12.5);
+            string unreadable = this.cache.WriteUnreadableCbbo(Put, October16);
+            this.cache.SaveCbbo(Call, October16, 6600.5);
+
+            ArchiveCompactionReport report = await this.CompactAsync();
+
+            Assert.AreEqual(1, report.UnreadableDayFiles.Count);
+            Assert.IsTrue(File.Exists(unreadable));
+            Assert.IsTrue(File.Exists(legacy));
+            Assert.IsNull(await this.cache.ReadServedCbboAsync(Put, October16));
+        }
+
+        [TestMethod]
+        public async Task Compact_DryRunOfAVersion1Cache_LeavesItsMetadataAsItIs()
+        {
+            // a dry run changes nothing in the cache, so an older build still opens it
+            byte[] version1 = Encoding.UTF8.GetBytes("{\"format_version\":1,\"day_cutoff\":\"UTC\"}");
+            File.WriteAllBytes(Path.Combine(this.cache.Root, CacheMetadata.FileName), version1);
+            this.cache.SaveLegacyCbbo(Call, October16, 6600.5);
+
+            ArchiveCompactionReport report = await this.CreateCompactor(options => options.DryRun = true).CompactAsync();
+
+            Assert.IsTrue(report.DryRun);
+            Assert.AreEqual(1L, report.DayFilesAbsorbed);
+            CollectionAssert.AreEqual(version1, File.ReadAllBytes(Path.Combine(this.cache.Root, CacheMetadata.FileName)));
+        }
+
+        [TestMethod]
+        public async Task Compact_Version1Cache_IsMarkedVersion2()
+        {
+            File.WriteAllText(Path.Combine(this.cache.Root, CacheMetadata.FileName), "{\"format_version\":1,\"day_cutoff\":\"UTC\"}");
+            this.cache.SaveLegacyCbbo(Call, October16, 6600.5);
+
+            await this.CompactAsync();
+
+            StringAssert.Contains(File.ReadAllText(Path.Combine(this.cache.Root, CacheMetadata.FileName)), "\"format_version\": 2");
+            Assert.AreEqual(6600.5, (await this.cache.ReadServedCbboAsync(Call, October16)).Single().Price);
         }
 
         [TestMethod]
@@ -216,7 +302,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             Assert.AreEqual(1L, report.DayFilesChangedDuringRun);
             Assert.AreEqual(0L, report.DayFilesDeleted);
             Assert.AreEqual(0, report.FilesLeft.Count);
-            CollectionAssert.AreEqual(new[] { 6601d, 6602d }, (await DayFile.ReadAsync(dayFile, JsonRecordReader.ReadCbboAsync, CancellationToken.None)).Select(record => record.Price).ToArray());
+            CollectionAssert.AreEqual(new[] { 6601d, 6602d }, (await DayFile.ReadAsync(dayFile, DayFileFormats.Cbbo1Min, CancellationToken.None)).Select(record => record.Price).ToArray());
             Assert.AreEqual(6600.5, (await this.cache.ReadServedCbboAsync(Call, October16)).Single().Price, "the archive holds the copy the run found");
         }
 
@@ -260,7 +346,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 report = await this.CompactAsync();
             }
 
-            CollectionAssert.AreEqual(new[] { Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz") }, report.FilesLeft.ToArray(), "under the cache root");
+            CollectionAssert.AreEqual(new[] { Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "16", "SPXW%20%20261016C06600000_2026-10-16.UTC.dbn.zst") }, report.FilesLeft.ToArray(), "under the cache root");
             Assert.AreEqual(0L, report.DayFilesDeleted);
             Assert.IsTrue(File.Exists(dayFile));
 
@@ -286,7 +372,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             Assert.AreEqual(1, report.GroupsCompacted);
             Assert.AreEqual(1L, report.SymbolDaysWritten);
             UnreadableDayFile dayFile = report.UnreadableDayFiles.Single();
-            Assert.AreEqual(Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016P06600000_2026-10-16.UTC.json.gz"), dayFile.RelativePath);
+            Assert.AreEqual(Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "16", "SPXW%20%20261016P06600000_2026-10-16.UTC.dbn.zst"), dayFile.RelativePath);
             Assert.IsFalse(string.IsNullOrEmpty(dayFile.Error));
             Assert.AreEqual(0, report.Suspects.Count, "an unreadable day file is no suspect");
             Assert.AreEqual(0, report.FailedGroups.Count);
@@ -299,10 +385,10 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         [DataRow("an empty gzip payload")]
         [DataRow("whitespace only")]
         [DataRow("JSON lines")]
-        public async Task Compact_DayFileHoldingNoJsonArray_IsReportedUnreadableKeptAndLeftOut(string holding)
+        public async Task Compact_LegacyDayFileHoldingNoJsonArray_IsReportedUnreadableKeptAndLeftOut(string holding)
         {
             this.cache.SaveCbbo(Call, October16, 6600.5);
-            string dayFile = this.cache.WriteCbboBytes(Put, October16, CacheFixture.NoArrayDayFile(holding));
+            string dayFile = this.cache.WriteLegacyCbboBytes(Put, October16, CacheFixture.NoArrayDayFile(holding));
 
             ArchiveCompactionReport report = await this.CompactAsync();
 
@@ -317,9 +403,10 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         [DataRow("a local time", "only UTC times")]
         [DataRow("a record of another type", "Cbbo1S")]
         [DataRow("a record of another symbol", Put)]
-        public async Task Compact_DayFileOfRecordsTheArchiveCannotHold_IsReportedUnreadableAndKept(string problem, string expectedError)
+        public async Task Compact_LegacyDayFileOfRecordsTheArchiveCannotHold_IsReportedUnreadableAndKept(string problem, string expectedError)
         {
-            string dayFile = this.cache.SaveChangedCbbo(Call, October16, record =>
+            // a DBN day file cannot hold them: its symbol is the file's, its times UTC
+            string dayFile = this.cache.SaveChangedLegacyCbbo(Call, October16, record =>
             {
                 switch(problem)
                 {
@@ -465,15 +552,24 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         public async Task Compact_FoldersAndFilesTheArchiveDoesNotTake_AreSkippedAndLeft()
         {
             string dayFile = this.cache.SaveCbbo(Call, October16, 6600.5);
+            string dayFileName = Path.GetFileName(dayFile);
+            string dayDirectory = Path.GetDirectoryName(dayFile);
             string[] left =
             {
-                this.cache.SaveDayFile("not_a_dataset", CacheFixture.Cbbo, Call, October16, CacheFixture.CbboRecord(October16, 1, 0)),
-                this.cache.SaveDayFile(CacheFixture.Opra, Schema.Mbo, Call, October16, CacheFixture.CbboRecord(October16, 1, 0)),
+                CopyTo(dayFile, Path.Combine(this.cache.Root, "not_a_dataset", CacheFixture.Cbbo, "2026", "10", "16"), dayFileName),
+                CopyTo(dayFile, Path.Combine(this.cache.Root, CacheFixture.Opra, Schema.Mbo, "2026", "10", "16"), dayFileName),
+                CopyTo(dayFile, dayDirectory, "SPXW%20%20261016C06600000_2026-10-16.ET.dbn.zst"),
+                CopyTo(dayFile, dayDirectory, "SPXW%20%20261016C06600000_2026-10-17.UTC.dbn.zst"),
+                CopyTo(dayFile, dayDirectory, "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz"),
+                CopyTo(dayFile, this.cache.CbboDirectory, dayFileName),
+                CopyTo(dayFile, Path.Combine(this.cache.CbboDirectory, "6"), "SPXW%20%20261016C06600000_2026-10-06.UTC.dbn.zst"),
+                CopyTo(dayFile, Path.Combine(this.cache.CbboDirectory, "00"), dayFileName),
+                CopyTo(dayFile, Path.Combine(this.cache.CbboDirectory, "32"), dayFileName),
                 CopyTo(dayFile, this.cache.CbboDirectory, "SPXW%20%20261016C06600000_2026-10-16.ET.json.gz"),
                 CopyTo(dayFile, this.cache.CbboDirectory, "SPXW%20%20261016C06600000_2026-11-02.UTC.json.gz"),
                 CopyTo(dayFile, this.cache.CbboDirectory, "notes.txt"),
-                CopyTo(dayFile, Path.Combine(this.cache.Root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "26", "10"), Path.GetFileName(dayFile)),
-                CopyTo(dayFile, Path.Combine(this.cache.Root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "13"), Path.GetFileName(dayFile)),
+                CopyTo(dayFile, Path.Combine(this.cache.Root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "26", "10", "16"), dayFileName),
+                CopyTo(dayFile, Path.Combine(this.cache.Root, Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "13", "16"), dayFileName),
             };
 
             ArchiveCompactionReport report = await this.CompactAsync();
@@ -504,7 +600,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         [TestMethod]
         [DataRow(false, DisplayName = "the group-month's first full file")]
         [DataRow(true, DisplayName = "a delta over a full file serving the day")]
-        public async Task Compact_DayFileOfAValueItsRecordInterfaceCannotGive_IsReportedUnreadableAndKept(bool archived)
+        public async Task Compact_LegacyDayFileOfAValueItsRecordInterfaceCannotGive_IsReportedUnreadableAndKept(bool archived)
         {
             // TcbboRecordJson holds ts_in_delta as a long and gives it as the interface's int by a checked cast
             TcbboArchiveSchema schema = new TcbboArchiveSchema(RType.Tcbbo);
@@ -514,7 +610,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 ArchiveTestRecords.WriteFile(schema, this.cache.MonthDirectory(CacheFixture.Opra, Schema.Tcbbo, 2026, 10), new ArchiveFileIdentity(CacheFixture.Opra, Schema.Tcbbo, "SPXW.OPT", 2026, 10, "UTC", PreviousBuiltUtc), new ArchiveSymbolDay<ITcbboRecord>(Call, October16, new ITcbboRecord[] { Tcbbo(12.5, 5150) }));
             }
 
-            string overflowing = this.cache.SaveDayFile(CacheFixture.Opra, Schema.Tcbbo, Call, October16, Tcbbo(12.5, (long)int.MaxValue + 1));
+            string overflowing = this.cache.SaveLegacyDayFile(CacheFixture.Opra, Schema.Tcbbo, Call, October16, Tcbbo(12.5, (long)int.MaxValue + 1));
             this.cache.SaveDayFile(CacheFixture.Opra, Schema.Tcbbo, Put, October16, Tcbbo(1.5, 950));
 
             ArchiveCompactionReport report = await this.CompactAsync();
@@ -1434,7 +1530,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         [TestMethod]
-        [DataRow("{\"format_version\":2,\"day_cutoff\":\"UTC\"}", DisplayName = "another format version")]
+        [DataRow("{\"format_version\":3,\"day_cutoff\":\"UTC\"}", DisplayName = "another format version")]
         [DataRow("{\"format_version\":1,\"day_cutoff\":\"ET\"}", DisplayName = "another cutoff")]
         public async Task Compact_MetadataThisBuildDoesNotAccept_Throws(string metadata)
         {
