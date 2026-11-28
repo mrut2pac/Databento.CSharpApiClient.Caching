@@ -76,7 +76,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             ArchiveCompactionReport report = await this.CompactAsync(check);
 
             SuspectDayFile suspect = report.Suspects.Single();
-            Assert.AreEqual(Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "SPXW%20%20261016C06800000_2026-10-16.UTC.json.gz"), suspect.RelativePath);
+            Assert.AreEqual(Path.Combine(Datasets.OpraPillar, Schema.ConsolidatedBBO1Min, "2026", "10", "16", "SPXW%20%20261016C06800000_2026-10-16.UTC.dbn.zst"), suspect.RelativePath);
             Assert.AreEqual(Strike(6800), suspect.Day.Symbol);
             Assert.AreEqual(new DateOnly(2026, 10, 16), suspect.Day.Date);
             Assert.AreEqual(2, suspect.Day.RecordCount);
@@ -176,8 +176,8 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             CollectionAssert.AreEqual(
                 new[]
                 {
-                    Path.Combine(Datasets.GlbxMdp3, Schema.Bbo1Min, "2026", "10", "MNQZ6_2026-10-16.UTC.json.gz"),
-                    Path.Combine(Datasets.OpraPillar, Schema.Tcbbo, "2026", "10", "SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz"),
+                    Path.Combine(Datasets.GlbxMdp3, Schema.Bbo1Min, "2026", "10", "16", "MNQZ6_2026-10-16.UTC.dbn.zst"),
+                    Path.Combine(Datasets.OpraPillar, Schema.Tcbbo, "2026", "10", "16", "SPXW%20%20261016C06600000_2026-10-16.UTC.dbn.zst"),
                 },
                 report.Suspects.Select(suspect => suspect.RelativePath).ToArray());
         }

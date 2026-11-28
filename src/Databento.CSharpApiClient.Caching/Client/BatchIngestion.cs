@@ -36,10 +36,9 @@ namespace Databento.CSharpApiClient.Caching.Client
             this.store = store;
         }
 
-        public async Task<BatchCounts> IngestAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, BatchFolder folder, CancellationToken cancellationToken)
+        public async Task<BatchCounts> IngestAsync<TSource, TRecord>(CachedSchema<TSource, TRecord> schema, BatchFolder folder, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
-            where TJson : class, TSource
         {
             BatchCounts counts = new BatchCounts();
             List<DateTime> finalDays = folder.GetFinalDays(out List<DateTime> leftOut);
@@ -53,13 +52,13 @@ namespace Databento.CSharpApiClient.Caching.Client
             IEnumerable<IReadOnlyList<string>> groups = folder.SplitBySize ? new[] { folder.DataFiles } : folder.DataFiles.Select(file => (IReadOnlyList<string>)new[] { file });
             foreach(IReadOnlyList<string> group in groups)
             {
-                Dictionary<SymbolDay, List<TJson>> buckets = new Dictionary<SymbolDay, List<TJson>>();
+                Dictionary<SymbolDay, List<TRecord>> buckets = new Dictionary<SymbolDay, List<TRecord>>();
                 foreach(string file in group)
                 {
                     await this.ReadFileAsync(schema, run, file, buckets, cancellationToken).ConfigureAwait(false);
                 }
 
-                foreach(KeyValuePair<SymbolDay, List<TJson>> bucket in buckets.OrderBy(bucket => bucket.Key.Day).ThenBy(bucket => bucket.Key.Symbol, StringComparer.Ordinal))
+                foreach(KeyValuePair<SymbolDay, List<TRecord>> bucket in buckets.OrderBy(bucket => bucket.Key.Day).ThenBy(bucket => bucket.Key.Symbol, StringComparer.Ordinal))
                 {
                     run.Handled.Add(bucket.Key);
                     if(await this.SaveNewAsync(schema, run, bucket.Key, bucket.Value, cancellationToken).ConfigureAwait(false))
@@ -89,10 +88,9 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// Reads a data file's records into the buckets of the final days, each under its symbol: the record's own, else the one the
         /// symbology lookup gives its instrument id that day
         /// </summary>
-        private async Task ReadFileAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, SymbolDayRun run, string path, Dictionary<SymbolDay, List<TJson>> buckets, CancellationToken cancellationToken)
+        private async Task ReadFileAsync<TSource, TRecord>(CachedSchema<TSource, TRecord> schema, SymbolDayRun run, string path, Dictionary<SymbolDay, List<TRecord>> buckets, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
-            where TJson : class, TSource
         {
             FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
             await using(file.ConfigureAwait(false))
@@ -100,8 +98,8 @@ namespace Databento.CSharpApiClient.Caching.Client
                 Stream data = BatchFolder.IsZstd(path) ? new DecompressionStream(file) : file;
                 try
                 {
-                    Func<Stream, CancellationToken, IAsyncEnumerable<TJson>> read = BatchFolder.IsDbn(path) ? schema.ReadDbn : schema.ReadDayFile;
-                    await foreach(TJson record in read(data, cancellationToken).ConfigureAwait(false))
+                    Func<Stream, CancellationToken, IAsyncEnumerable<TRecord>> read = BatchFolder.IsDbn(path) ? schema.ReadDbn : schema.ReadJson;
+                    await foreach(TRecord record in read(data, cancellationToken).ConfigureAwait(false))
                     {
                         DateTime? time = schema.GetFilterTime(record);
                         if(!time.HasValue)
@@ -134,9 +132,9 @@ namespace Databento.CSharpApiClient.Caching.Client
                         }
 
                         SymbolDay symbolDay = new SymbolDay(symbol, day);
-                        if(!buckets.TryGetValue(symbolDay, out List<TJson> records))
+                        if(!buckets.TryGetValue(symbolDay, out List<TRecord> records))
                         {
-                            records = new List<TJson>();
+                            records = new List<TRecord>();
                             buckets.Add(symbolDay, records);
                         }
 
@@ -157,27 +155,25 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// Saves a symbol-day unless the cache already holds it
         /// </summary>
         /// <returns><c>true</c> when it was saved</returns>
-        private async Task<bool> SaveNewAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, SymbolDayRun run, SymbolDay symbolDay, IReadOnlyList<TJson> records, CancellationToken cancellationToken)
+        private async Task<bool> SaveNewAsync<TSource, TRecord>(CachedSchema<TSource, TRecord> schema, SymbolDayRun run, SymbolDay symbolDay, IReadOnlyList<TRecord> records, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
-            where TJson : class, TSource
         {
             if(await this.store.ContainsAsync(schema, run.GetMonth(this.store, schema.Name, symbolDay.Day), symbolDay.Symbol, symbolDay.Day).ConfigureAwait(false))
             {
                 return false;
             }
 
-            return await this.store.SaveAsync(run.Folder.Dataset, schema.Name, symbolDay.Symbol, symbolDay.Day, records, false, cancellationToken).ConfigureAwait(false);
+            return await this.store.SaveAsync(schema.Format, run.Folder.Dataset, symbolDay.Symbol, symbolDay.Day, records, false, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Saves as empty, as <see cref="EmptyDayPolicy"/> says, the final symbol-days the folder holds no records for and the cache does not
         /// hold; under <see cref="EmptyDayPolicy.CacheWhenNotListed"/> only those the symbology lookup confirms were not listed
         /// </summary>
-        private async Task SaveEmptyDaysAsync<TSource, TRecord, TJson>(CachedSchema<TSource, TRecord, TJson> schema, SymbolDayRun run, BatchCounts counts, CancellationToken cancellationToken)
+        private async Task SaveEmptyDaysAsync<TSource, TRecord>(CachedSchema<TSource, TRecord> schema, SymbolDayRun run, BatchCounts counts, CancellationToken cancellationToken)
             where TSource : class, IRecord
             where TRecord : class, TSource
-            where TJson : class, TSource
         {
             SymbolListing listing = null;
             bool lookupFailed = false;
@@ -225,7 +221,7 @@ namespace Databento.CSharpApiClient.Caching.Client
                         }
                     }
 
-                    if(await this.store.SaveAsync(run.Folder.Dataset, schema.Name, symbol, day, Array.Empty<TJson>(), false, cancellationToken, this.options.EmptyDays == EmptyDayPolicy.CacheAlways ? "EmptyDays is CacheAlways" : "it was not listed").ConfigureAwait(false))
+                    if(await this.store.SaveAsync(schema.Format, run.Folder.Dataset, symbol, day, Array.Empty<TRecord>(), false, cancellationToken, this.options.EmptyDays == EmptyDayPolicy.CacheAlways ? "EmptyDays is CacheAlways" : "it was not listed").ConfigureAwait(false))
                     {
                         ++counts.SavedEmpty;
                     }

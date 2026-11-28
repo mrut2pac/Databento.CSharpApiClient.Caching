@@ -113,6 +113,9 @@ namespace Databento.CSharpApiClient.Caching.Logging
         [LoggerMessage(EventId = 1030, Level = LogLevel.Information, Message = "{Count} settled symbol-day(s) of {Schema} of {Dataset}, UTC days {FirstDay:yyyy-MM-dd} to {LastDay:yyyy-MM-dd}, are served only up to the available end {AvailableEndUtc:yyyy-MM-ddTHH:mm:ssZ} and not saved")]
         public static partial void SettledDaysPastAvailableEnd(this ILogger logger, int count, string schema, string dataset, DateTime firstDay, DateTime lastDay, DateTime availableEndUtc);
 
+        [LoggerMessage(EventId = 1031, Level = LogLevel.Warning, Message = "{Symbol} {Day:yyyy-MM-dd} {Schema} is served but not saved: its records cannot be written as DBN: {Error}")]
+        public static partial void DayNotWritable(this ILogger logger, string symbol, DateTime day, string schema, string error);
+
         // batch jobs
 
         [LoggerMessage(EventId = 2001, Level = LogLevel.Debug, Message = "{Missing} final symbol-day(s) of {Schema} of {Dataset} are not cached; {AlreadyCached} are, and {LeftOut} day(s) not final are left out")]

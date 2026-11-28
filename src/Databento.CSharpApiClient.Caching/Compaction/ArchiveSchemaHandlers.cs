@@ -1,16 +1,15 @@
 using System;
 using System.Collections.Generic;
 
-using Databento.CSharpApiClient.Caching.Archive.Schemas;
+using Databento.CSharpApiClient.Caching.Cache;
 using Databento.CSharpApiClient.DataModel;
 using Databento.CSharpApiClient.DataModel.Dbn;
-using Databento.CSharpApiClient.DataModel.Json;
 
 namespace Databento.CSharpApiClient.Caching.Compaction
 {
     /// <summary>
     /// The Databento schemas the archive has columns for, by name. Another schema is a contained addition: its record interface, archive
-    /// schema and JSON reader.
+    /// schema and day file format.
     /// </summary>
     internal static class ArchiveSchemaHandlers
     {
@@ -31,18 +30,18 @@ namespace Databento.CSharpApiClient.Caching.Compaction
         {
             IArchiveSchemaHandler[] handlers =
             {
-                Cbbo(Schema.ConsolidatedBBO1Sec, RType.Cbbo1S),
-                Cbbo(Schema.ConsolidatedBBO1Min, RType.Cbbo1M),
-                Bbo(Schema.Bbo1Sec, RType.Bbo1S),
-                Bbo(Schema.Bbo1Min, RType.Bbo1M),
-                new ArchiveSchemaHandler<ITcbboRecord, TcbboRecordDbn, TcbboRecordJson>(Schema.Tcbbo, new TcbboArchiveSchema(RType.Tcbbo), JsonRecordReader.ReadTcbboAsync),
-                new ArchiveSchemaHandler<ITradeRecord, TradeRecordDbn, TradeRecordJson>(Schema.Trades, new TradeArchiveSchema(RType.Mbp0), JsonRecordReader.ReadTradesAsync),
-                Ohlcv(Schema.Ohlcv1Sec, RType.Ohlcv1S),
-                Ohlcv(Schema.Ohlcv1Min, RType.Ohlcv1M),
-                Ohlcv(Schema.Ohlcv1Hour, RType.Ohlcv1H),
-                Ohlcv(Schema.Ohlcv1Day, RType.Ohlcv1D),
-                Ohlcv(Schema.OhlcvEod, RType.OhlcvEod),
-                new ArchiveSchemaHandler<IStatisticsRecord, StatisticsRecordDbn, StatisticsRecordJson>(Schema.Statistics, new StatisticsArchiveSchema(RType.Statistics), JsonRecordReader.ReadStatisticsAsync),
+                new ArchiveSchemaHandler<ICbboRecord, CbboRecordDbn>(DayFileFormats.Cbbo1Sec),
+                new ArchiveSchemaHandler<ICbboRecord, CbboRecordDbn>(DayFileFormats.Cbbo1Min),
+                new ArchiveSchemaHandler<IBboRecord, BboRecordDbn>(DayFileFormats.Bbo1Sec),
+                new ArchiveSchemaHandler<IBboRecord, BboRecordDbn>(DayFileFormats.Bbo1Min),
+                new ArchiveSchemaHandler<ITcbboRecord, TcbboRecordDbn>(DayFileFormats.Tcbbo),
+                new ArchiveSchemaHandler<ITradeRecord, TradeRecordDbn>(DayFileFormats.Trades),
+                new ArchiveSchemaHandler<IOhlcvRecord, OhlcvRecordDbn>(DayFileFormats.Ohlcv1Sec),
+                new ArchiveSchemaHandler<IOhlcvRecord, OhlcvRecordDbn>(DayFileFormats.Ohlcv1Min),
+                new ArchiveSchemaHandler<IOhlcvRecord, OhlcvRecordDbn>(DayFileFormats.Ohlcv1Hour),
+                new ArchiveSchemaHandler<IOhlcvRecord, OhlcvRecordDbn>(DayFileFormats.Ohlcv1Day),
+                new ArchiveSchemaHandler<IOhlcvRecord, OhlcvRecordDbn>(DayFileFormats.OhlcvEod),
+                new ArchiveSchemaHandler<IStatisticsRecord, StatisticsRecordDbn>(DayFileFormats.Statistics),
             };
 
             Dictionary<string, IArchiveSchemaHandler> byName = new Dictionary<string, IArchiveSchemaHandler>(StringComparer.Ordinal);
@@ -52,21 +51,6 @@ namespace Databento.CSharpApiClient.Caching.Compaction
             }
 
             return byName;
-        }
-
-        private static IArchiveSchemaHandler Cbbo(string schema, RType recordType)
-        {
-            return new ArchiveSchemaHandler<ICbboRecord, CbboRecordDbn, CbboRecordJson>(schema, new CbboArchiveSchema(recordType), JsonRecordReader.ReadCbboAsync);
-        }
-
-        private static IArchiveSchemaHandler Bbo(string schema, RType recordType)
-        {
-            return new ArchiveSchemaHandler<IBboRecord, BboRecordDbn, BboRecordJson>(schema, new BboArchiveSchema(recordType), JsonRecordReader.ReadBboAsync);
-        }
-
-        private static IArchiveSchemaHandler Ohlcv(string schema, RType recordType)
-        {
-            return new ArchiveSchemaHandler<IOhlcvRecord, OhlcvRecordDbn, OhlcvRecordJson>(schema, new OhlcvArchiveSchema(recordType), JsonRecordReader.ReadOhlcvAsync);
         }
     }
 }

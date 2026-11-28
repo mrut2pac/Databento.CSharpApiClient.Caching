@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Cache;
-using Databento.CSharpApiClient.DataModel.Json;
+using Databento.CSharpApiClient.DataModel;
 
 namespace Databento.CSharpApiClient.Caching.Benchmarks
 {
@@ -51,7 +51,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
                 string folder = DayFileName.GetMonthDirectory(settings.CacheRoot, dataset, schema, instrumentDay.Day.Year, instrumentDay.Day.Month);
                 foreach(SyntheticContract contract in market.ListContracts(instrumentDay.Instrument, instrumentDay.Day))
                 {
-                    string path = Path.Combine(folder, DayFileName.Format(contract.Symbol, instrumentDay.Day, CacheMetadata.UtcCutoff));
+                    string path = DayFileName.GetPath(folder, contract.Symbol, instrumentDay.Day, CacheMetadata.UtcCutoff);
                     if(File.Exists(path))
                     {
                         Interlocked.Increment(ref kept);
@@ -60,8 +60,8 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
 
                     object[] dayRecords = market.CreateRecords(contract, instrumentDay.Day);
                     bool saved = instrumentDay.Instrument.Kind == InstrumentKind.Option
-                        ? await DayFile.WriteAsync(path, Array.ConvertAll(dayRecords, record => (CbboRecordJson)record), false, ct).ConfigureAwait(false)
-                        : await DayFile.WriteAsync(path, Array.ConvertAll(dayRecords, record => (BboRecordJson)record), false, ct).ConfigureAwait(false);
+                        ? await WriteAsync(path, DayFileFormats.Cbbo1Min, dataset, contract.Symbol, instrumentDay.Day, dayRecords, ct).ConfigureAwait(false)
+                        : await WriteAsync(path, DayFileFormats.Bbo1Min, dataset, contract.Symbol, instrumentDay.Day, dayRecords, ct).ConfigureAwait(false);
                     if(saved)
                     {
                         Interlocked.Increment(ref written);
@@ -86,6 +86,17 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
             result.Values["DayFilesPerSecond"] = written / Math.Max(0.001, use.ElapsedSeconds);
             result.Save(settings.ResultsFolder);
             Console.WriteLine(Invariant($"Seed done: {written:N0} day files written, {kept:N0} already there, {records:N0} records, {bytes / 1024.0 / 1024.0 / 1024.0:N2} GB in {use.ElapsedSeconds:N0} s ({result.Values["DayFilesPerSecond"]:N0} files/s), peak {use.PeakWorkingSetMB:N0} MB working set, {use.PeakPrivateMemoryMB:N0} MB committed"));
+        }
+
+        /// <summary>
+        /// Writes a day file of generated JSON records as the cache saves a download: converted to DBN records
+        /// </summary>
+        private static Task<bool> WriteAsync<TSource, TRecord>(string path, DayFileFormat<TSource, TRecord> format, string dataset, string symbol, DateTime day, object[] records, CancellationToken cancellationToken)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+        {
+            TRecord[] converted = Array.ConvertAll(records, record => format.RecordSchema.ToRecord((TSource)record));
+            return DayFile.WriteAsync(path, format, dataset, symbol, day, converted, false, cancellationToken);
         }
     }
 }

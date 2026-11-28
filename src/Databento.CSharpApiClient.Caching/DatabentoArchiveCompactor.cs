@@ -109,6 +109,7 @@ namespace Databento.CSharpApiClient.Caching
                 Verification = options.Verification,
                 DayChecks = options.DayChecks?.ToArray(),
                 DryRun = options.DryRun,
+                DeleteEmptyDayDirectories = options.DeleteEmptyDayDirectories,
                 DryRunFolder = options.DryRunFolder,
                 RetireAttempts = options.RetireAttempts,
                 RetireRetryDelay = options.RetireRetryDelay,
@@ -133,7 +134,7 @@ namespace Databento.CSharpApiClient.Caching
             }
 
             ArchiveCompactionReport report = new ArchiveCompactionReport(this.options.DryRun);
-            CacheMetadata metadata = CacheMetadata.Read(this.options.CacheRoot);
+            CacheMetadata metadata = CacheMetadata.Read(this.options.CacheRoot, mark: !this.options.DryRun);
             if(metadata == null)
             {
                 // a lock file a killed run left, which only Linux leaves behind, is no file of a cache
@@ -379,10 +380,12 @@ namespace Databento.CSharpApiClient.Caching
         }
 
         /// <summary>
-        /// Lists a month folder's day files and groups them by the archive file they go into, adding the groups with no day files that still
-        /// have work (<see cref="HasWorkWithoutDayFiles"/>). Each group keeps its archive and temporary files as listed, so its run lists
-        /// nothing again. A file whose name is no day file of the cache's cutoff and the folder's month is left as it is, and so is a day
-        /// file younger than <see cref="ArchiveCompactorOptions.MinDayAgeDays"/>.
+        /// Lists a month folder's day files, those in its day folders and the legacy ones in the folder itself, and groups them by the archive
+        /// file they go into, adding the groups with no day files that still have work (<see cref="HasWorkWithoutDayFiles"/>). Each group
+        /// keeps its archive and temporary files as listed, so its run lists nothing again. A file whose name is no day file of the cache's
+        /// cutoff and of the folder's month and day, or that is not where the cache writes its kind, is left as it is, and so is a day file
+        /// younger than <see cref="ArchiveCompactorOptions.MinDayAgeDays"/>. A legacy day file of a symbol-day that also has a day file is
+        /// superseded by it: the day file is compacted, and the legacy one retired with it.
         /// </summary>
         private List<ArchiveGroupRequest> FindGroups(MonthFolder monthFolder, string cutoff, ArchiveCompactionReport report)
         {
@@ -392,7 +395,8 @@ namespace Databento.CSharpApiClient.Caching
             DateTime newestEligibleDay = this.options.TimeProvider.GetUtcNow().UtcDateTime.Date.AddDays(-this.options.MinDayAgeDays);
             Dictionary<string, Dictionary<(string RawSymbol, int Day), FoundDayFile>> groups = new Dictionary<string, Dictionary<(string RawSymbol, int Day), FoundDayFile>>(StringComparer.Ordinal);
             Dictionary<string, List<string>> archiveFiles = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-            foreach(FileInfo file in new DirectoryInfo(monthFolder.Directory).EnumerateFiles("*", SearchOption.TopDirectoryOnly).OrderBy(file => file.Name, StringComparer.Ordinal))
+            DirectoryInfo directory = new DirectoryInfo(monthFolder.Directory);
+            foreach(FileInfo file in directory.EnumerateFiles("*", SearchOption.TopDirectoryOnly).OrderBy(file => file.Name, StringComparer.Ordinal))
             {
                 if(ArchiveFileName.TryParseGroup(file.Name, monthFolder.Dataset, schema, year, month, cutoff, out string archiveGroup))
                 {
@@ -406,26 +410,28 @@ namespace Databento.CSharpApiClient.Caching
                     continue;
                 }
 
-                if(!DayFileName.TryParse(file.Name, cutoff, out string rawSymbol, out DateTime date) || date.Year != year || date.Month != month)
+                if(DayFileName.TryParseLegacy(file.Name, cutoff, out string rawSymbol, out DateTime date) && date.Year == year && date.Month == month)
+                {
+                    this.AddDayFile(groups, monthFolder.Dataset, file, rawSymbol, date, newestEligibleDay, report);
+                }
+            }
+
+            int daysInMonth = DateTime.DaysInMonth(year, month);
+            foreach(DirectoryInfo dayDirectory in directory.EnumerateDirectories().OrderBy(folder => folder.Name, StringComparer.Ordinal))
+            {
+                // the two digits the cache names a day folder with, and a day of the month
+                if(dayDirectory.Name.Length != 2 || !int.TryParse(dayDirectory.Name, NumberStyles.None, CultureInfo.InvariantCulture, out int day) || day < 1 || day > daysInMonth)
                 {
                     continue;
                 }
 
-                if(this.options.MinDayAgeDays > 0 && date > newestEligibleDay)
+                foreach(FileInfo file in dayDirectory.EnumerateFiles("*", SearchOption.TopDirectoryOnly).OrderBy(file => file.Name, StringComparer.Ordinal))
                 {
-                    report.DayFileTooRecent();
-                    continue;
+                    if(DayFileName.TryParse(file.Name, cutoff, out string rawSymbol, out DateTime date) && date == new DateTime(year, month, day))
+                    {
+                        this.AddDayFile(groups, monthFolder.Dataset, file, rawSymbol, date, newestEligibleDay, report);
+                    }
                 }
-
-                string group = ArchiveGroup.Of(monthFolder.Dataset, rawSymbol);
-                if(!groups.TryGetValue(group, out Dictionary<(string RawSymbol, int Day), FoundDayFile> dayFiles))
-                {
-                    dayFiles = new Dictionary<(string RawSymbol, int Day), FoundDayFile>();
-                    groups.Add(group, dayFiles);
-                }
-
-                // a name stands for one symbol-day only, so a folder holds at most one day file of each
-                dayFiles.Add((rawSymbol, date.Day), new FoundDayFile(file.FullName, rawSymbol, date, file.Length, file.LastWriteTimeUtc));
             }
 
             foreach(KeyValuePair<string, List<string>> group in archiveFiles.Where(group => !groups.ContainsKey(group.Key) && this.HasWorkWithoutDayFiles(monthFolder, group.Key, group.Value, cutoff)))
@@ -438,6 +444,29 @@ namespace Databento.CSharpApiClient.Caching
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .Select(group => new ArchiveGroupRequest(monthFolder.Directory, relativeDirectory, monthFolder.Dataset, schema, group.Key, year, month, group.Value.Values.ToList(), archiveFiles.GetValueOrDefault(group.Key) ?? new List<string>()))
                 .ToList();
+        }
+
+        /// <summary>
+        /// Adds a day file to its group, unless it is too recent; a day file found for a symbol-day that has a legacy one supersedes it
+        /// </summary>
+        private void AddDayFile(Dictionary<string, Dictionary<(string RawSymbol, int Day), FoundDayFile>> groups, string dataset, FileInfo file, string rawSymbol, DateTime date, DateTime newestEligibleDay, ArchiveCompactionReport report)
+        {
+            if(this.options.MinDayAgeDays > 0 && date > newestEligibleDay)
+            {
+                report.DayFileTooRecent();
+                return;
+            }
+
+            string group = ArchiveGroup.Of(dataset, rawSymbol);
+            if(!groups.TryGetValue(group, out Dictionary<(string RawSymbol, int Day), FoundDayFile> dayFiles))
+            {
+                dayFiles = new Dictionary<(string RawSymbol, int Day), FoundDayFile>();
+                groups.Add(group, dayFiles);
+            }
+
+            // a name stands for one symbol-day only, so each folder holds at most one day file of each; the legacy ones are listed first
+            FoundDayFile found = new FoundDayFile(file.FullName, rawSymbol, date, file.Length, file.LastWriteTimeUtc);
+            dayFiles[(rawSymbol, date.Day)] = dayFiles.TryGetValue((rawSymbol, date.Day), out FoundDayFile legacy) ? found.Superseding(legacy) : found;
         }
 
         /// <summary>

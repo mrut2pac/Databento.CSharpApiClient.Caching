@@ -63,6 +63,12 @@ namespace Databento.CSharpApiClient.Caching
         public bool DryRun { get; set; }
 
         /// <summary>
+        /// Gets or sets whether a day folder the run empties of its day files is deleted; default <c>true</c>. A folder that holds anything,
+        /// such as a day file a client saved during the run, is kept; a client finding its day folder gone creates it again.
+        /// </summary>
+        public bool DeleteEmptyDayDirectories { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets the folder a dry run writes into, in the cache's layout; it neither holds nor is inside the cache root.
         /// </summary>
         public string DryRunFolder { get; set; }

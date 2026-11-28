@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 namespace Databento.CSharpApiClient.Caching.Cache
 {
     /// <summary>
-    /// Passes a day file's JSON through from its <c>[</c> on, as it is read: the whitespace before it goes, and data that starts with
+    /// Passes a legacy day file's JSON through from its <c>[</c> on, as it is read: the whitespace before it goes, and data that starts with
     /// anything else is refused with <see cref="InvalidDataException"/>. The client's record reader takes only data starting with
     /// <c>[</c> as an array and reads it one record at a time; read as JSON lines, nothing would be an empty day and lines would be records.
     /// </summary>
@@ -19,7 +19,7 @@ namespace Databento.CSharpApiClient.Caching.Cache
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonArrayStartStream"/> class.
         /// </summary>
-        /// <param name="source">The day file's JSON, as UTF-8; left open</param>
+        /// <param name="source">The legacy day file's JSON, as UTF-8; left open</param>
         public JsonArrayStartStream(Stream source)
         {
             this.source = source;

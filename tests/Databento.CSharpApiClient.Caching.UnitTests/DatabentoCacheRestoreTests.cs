@@ -104,6 +104,34 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         [TestMethod]
+        public async Task Restore_DbnDayFileInTheCacheAndTheBackup_KeepsTheCachesCopy()
+        {
+            const string DbnDayFile = "OPRA.PILLAR/cbbo-1m/2026/10/16/SPXW%20%20261016C06600000_2026-10-16.UTC.dbn.zst";
+            this.WriteCacheFile(DbnDayFile, 6, 6);
+            this.PutBackup(BackupTarTestFiles.CreateTar(BackupFiles.Append(BackupTarTestFiles.Entry(DbnDayFile, 4))));
+
+            CacheRestoreReport report = await this.CreateRestore().RestoreAsync(Name);
+
+            Assert.AreEqual(1, report.DayFilesKept);
+            CollectionAssert.AreEqual(new byte[] { 6, 6 }, File.ReadAllBytes(this.CachePath(DbnDayFile)));
+        }
+
+        [TestMethod]
+        public async Task Restore_Version1Backup_RestoresItsLegacyDayFilesAndIsMarkedVersion2()
+        {
+            // a backup an older build took: its legacy day files land in their month folders, where they are read from
+            KeyValuePair<string, byte[]>[] version1 = BackupFiles.Skip(1).Prepend(BackupTarTestFiles.Version1Metadata).ToArray();
+            this.PutBackup(BackupTarTestFiles.CreateTar(version1));
+
+            CacheRestoreReport report = await this.CreateRestore().RestoreAsync(Name);
+
+            Assert.AreEqual(4, report.FileCount);
+            CollectionAssert.AreEqual(new byte[] { 4 }, File.ReadAllBytes(this.CachePath(DayFile)));
+            // the file read before anything else opens the cache, which would mark it itself
+            StringAssert.Contains(File.ReadAllText(this.CachePath(CacheMetadata.FileName)), "\"format_version\": 2");
+        }
+
+        [TestMethod]
         public async Task Restore_NoCacheRoot_CreatesItFromTheBackup()
         {
             Directory.Delete(this.cache.Root, recursive: true);
@@ -252,7 +280,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
                 "missing" => BackupTarTestFiles.CreateTar(BackupFiles.Take(3), BackupTarTestFiles.CreateManifest(BackupFiles)),
                 "extra" => BackupTarTestFiles.CreateTar(BackupFiles, BackupTarTestFiles.CreateManifest(BackupFiles.Take(3))),
                 "metadata" => BackupTarTestFiles.CreateTar(withoutMetadata),
-                "version" => BackupTarTestFiles.CreateTar(withoutMetadata.Prepend(BackupTarTestFiles.Entry("metadata.json", "{\"format_version\": 2, \"day_cutoff\": \"UTC\"}"u8.ToArray()))),
+                "version" => BackupTarTestFiles.CreateTar(withoutMetadata.Prepend(BackupTarTestFiles.Entry("metadata.json", "{\"format_version\": 3, \"day_cutoff\": \"UTC\"}"u8.ToArray()))),
                 _ => BackupTarTestFiles.CreateTar(BackupFiles),
             };
 

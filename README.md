@@ -53,7 +53,7 @@ The first call downloads the whole UTC day of 2026-10-15 for that symbol, saves 
 - **Cache only.** `CacheMode.CacheOnly` serves what the cache holds and never asks Databento anything: when a symbol-day is missing, the call throws `NotCachedException` naming them. Use it to work from a restored backup at no cost, or while Databento should not be reached.
 - **Filling the cache without reading it.** `EnsureCachedAsync(dataset, schema, symbols, startUtc, endUtc)` makes sure the cache holds a range's symbol-days and returns no records. It finds the cached ones by day file name and the archive's index, reading no record. It downloads the others as a `CacheMode.Use` call would: in as few requests as `MaxSymbolsPerRequest` allows, under the same saving rules and `AvailableEndRefusal`, and keeping nothing in memory once saved. Its `EnsureCachedReport` counts the symbol-days found cached, saved, past the available end and not settled, and lists those the cache still lacks, so a host filling the cache for many symbols logs one line and knows which are there.
 - **Downloading again.** `CacheMode.Bypass` downloads the days again, serves the download, and replaces a cached day once it is settled and its condition is `available`, whatever the record counts (so a cached day holding duplicates is corrected); `BypassMissAction` says what happens to a cached day Databento now answers with no records.
-- **Transport.** `DatabentoTransport.Json` (the default) or `Dbn`. The cache saves the same JSON records either way, so you can switch at any time.
+- **Transport.** `DatabentoTransport.Dbn` (the default) or `Json`. The cache saves and serves the same DBN records either way (JSON records are converted as they arrive), so you can switch at any time.
 - **Interfaces.** `CachedDatabentoClient` is an `ICachedDatabentoClient`, whose calls take a `CacheMode`, and an `IDatabentoTimeseriesClient`, the Databento client's own interface, whose calls read the cache (`CacheMode.Use`). Code that takes an `IDatabentoTimeseriesClient` takes the cache or either Databento client, chosen by configuration; code that needs `Bypass` or batch jobs takes an `ICachedDatabentoClient`, and tests can hand either a fake. An implementation of either writes only the 11 async calls for several symbols, with a `CacheMode` for `ICachedDatabentoClient`: the client's own calls are bridged to those with `Use`, and extension methods add the one-symbol and synchronous forms. Two differences from the Databento clients: the cache refuses `ALL_SYMBOLS` (it needs the raw symbols), and its own methods name the cancellation token `ct` where the interfaces say `cancellationToken`.
 - **Unreadable archive files** raise `ArchiveFileUnreadable`, for the host to alarm on. Meanwhile the days only that file holds are downloaded again, and the file is left in place for you to restore or remove.
 
@@ -69,7 +69,7 @@ The defaults suit a backtest or research host. Change one when its row describes
 | `CheckAvailabilityFirst` | `false` | You prefer a metadata read before every download over an occasional refused request, or want only `available` days saved. It costs up to two metadata calls per download, which a burst of downloads can find rate-limited. |
 | `EmptyDays` | `CacheWhenNotListed` | `CacheAlways` saves every settled empty day whose condition is `available`, so weekends and quiet contracts are never asked for again; `Never` saves no empty day. |
 | `MaxSymbolsPerRequest` | 2,000 | You want smaller requests, for example to spread a large download over more, shorter calls. |
-| `Transport` | `Json` | You prefer DBN on the wire; the cache saves the same JSON records either way. |
+| `Transport` | `Dbn` | You prefer JSON on the wire; the cache saves the same DBN records either way. |
 
 ## Batch jobs
 
@@ -91,14 +91,16 @@ For ranges too large for the time-series calls: it saves the final symbol-days t
 
 ```
 <cache root>\
-  metadata.json                                       format version and day cutoff (UTC)
+  metadata.json                                         format version and day cutoff (UTC)
   OPRA.PILLAR\cbbo-1m\2026\10\
-    SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz  day file: one symbol, one UTC day
+    16\
+      SPXW%20%20261016C06600000_2026-10-16.UTC.dbn.zst  day file: one symbol, one UTC day
     OPRA.PILLAR_cbbo-1m_SPXW.OPT_2026-10.UTC_20261118T021500.full.parquet
     OPRA.PILLAR_cbbo-1m_SPXW.OPT_2026-10.UTC_20261118T021500.delta.3.parquet
 ```
 
-- **Day files.** Each holds one symbol's records for one UTC day as Databento's JSON records, gzip-compressed. An empty array means the day was asked for and holds no data.
+- **Day files.** Each holds one symbol's records for one UTC day as DBN, zstd-compressed, in a folder per day, so a month folder holds at most 31 day folders and its archive files. The file's metadata names its dataset, schema, day and symbol, so Databento's own tools (the `dbn` CLI, the Python `databento` package) and the client's `DbnReader` read it as it is. A file of no records means the day was asked for and holds no data.
+- **Caches of earlier versions.** Before 1.7.0 day files were Databento's JSON records, gzip-compressed (`.json.gz`), in the month folder. They are still read, from where they are, after the day file of the same day if there is one; the compactor absorbs them like any day file, and a backup of such a cache restores as it is. Opening a cache of format version 1 marks it version 2 in `metadata.json`, rewriting no day file, so an older build refuses it rather than taking its DBN day files for missing days. Going back to an older build is not supported.
 - **Archive files.** The compactor folds day files into Parquet, one archive per dataset, schema, group and month: a full file and at most one delta. The group is the parent symbol for OPRA options (`SPXW.OPT`) and CME futures (`MNQ.FUT`), and the symbol itself otherwise.
 - **Reading the archive.** The Parquet files have one column per record field, plus `raw_symbol` and `date`, so DuckDB, pandas or any Parquet reader can query them directly.
 

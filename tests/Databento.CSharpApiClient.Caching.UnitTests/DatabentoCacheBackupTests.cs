@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Backup;
@@ -27,7 +28,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
 
         private const string CallDayFile = "OPRA.PILLAR/cbbo-1m/2026/10/SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz";
 
-        private const string OhlcvDayFile = "XNAS.ITCH/ohlcv-1d/2026/10/SPY_2026-10-16.UTC.json.gz";
+        private const string OhlcvDayFile = "XNAS.ITCH/ohlcv-1d/2026/10/16/SPY_2026-10-16.UTC.dbn.zst";
 
         private static readonly DateTime NowUtc = new DateTime(2026, 11, 19, 2, 15, 30, 500, DateTimeKind.Utc);
 
@@ -81,7 +82,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             Assert.AreEqual(Name, report.Name);
             Assert.AreEqual(cacheFiles.Length, report.FileCount);
             Assert.AreEqual(manifest.TotalBytes, report.TotalBytes);
-            Assert.AreEqual(2, report.DayFiles, "the archive file and metadata.json are no day files");
+            Assert.AreEqual(2, report.DayFiles, "the legacy day file and the day file; the archive file and metadata.json are no day files");
             Assert.AreEqual(0, report.OldBackupsDeleted);
             Assert.AreEqual(0, Directory.GetFileSystemEntries(this.StagingFolder).Length, "the staging folder is emptied by the move");
             Assert.IsFalse(File.Exists(Path.Combine(this.cache.Root, CacheRootLock.FileName)), "the lock is released");
@@ -112,6 +113,41 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
             }).RestoreAsync(Name);
 
             CollectionAssert.AreEqual(served.Select(record => record.Price).ToArray(), (await this.cache.ReadServedCbboAsync("SPXW  261016C06600000", october16)).Select(record => record.Price).ToArray());
+        }
+
+        [TestMethod]
+        public async Task BackUp_CacheOfDayFilesAndLegacyDayFilesRestoredLater_ServesBoth()
+        {
+            DateTime october16 = new DateTime(2026, 10, 16);
+            string legacy = this.cache.SaveLegacyCbbo("SPXW  261016C06600000", october16, 6600.5);
+            string dayFile = this.cache.SaveCbbo("SPXW  261016P06600000", october16, 12.5);
+            await this.CreateBackup().BackUpAsync();
+            File.Delete(legacy);
+            File.Delete(dayFile);
+
+            await new DatabentoCacheRestore(new CacheRestoreOptions
+            {
+                CacheRoot = this.cache.Root,
+                Store = new LocalDirectoryBackupStore(this.StoreFolder),
+                StagingFolder = this.StagingFolder,
+            }).RestoreAsync(Name);
+
+            Assert.AreEqual(6600.5, (await DayFile.ReadAsync(legacy, DayFileFormats.Cbbo1Min, CancellationToken.None)).Single().Price, "back in its month folder");
+            Assert.AreEqual(12.5, (await DayFile.ReadAsync(dayFile, DayFileFormats.Cbbo1Min, CancellationToken.None)).Single().Price, "back in its day folder");
+        }
+
+        [TestMethod]
+        public async Task BackUp_Version1Cache_LeavesItsMetadataAsItIs()
+        {
+            // a backup reads the cache and changes nothing in it
+            this.WriteCacheFiles();
+            byte[] version1 = BackupTarTestFiles.Version1Metadata.Value;
+            File.WriteAllBytes(this.CachePath(CacheMetadata.FileName), version1);
+
+            await this.CreateBackup().BackUpAsync();
+
+            CollectionAssert.AreEqual(version1, File.ReadAllBytes(this.CachePath(CacheMetadata.FileName)));
+            CollectionAssert.AreEqual(version1, BackupTarTestFiles.ReadEntries(this.BackupTar).Single(entry => entry.Key == CacheMetadata.FileName).Value, "backed up as it is");
         }
 
         [TestMethod]
@@ -233,7 +269,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         [TestMethod]
         public async Task BackUp_MetadataOfAnotherVersion_IsRefused()
         {
-            File.WriteAllText(Path.Combine(this.cache.Root, CacheMetadata.FileName), "{\"format_version\": 2, \"day_cutoff\": \"UTC\"}");
+            File.WriteAllText(Path.Combine(this.cache.Root, CacheMetadata.FileName), "{\"format_version\": 3, \"day_cutoff\": \"UTC\"}");
 
             await Assert.ThrowsExceptionAsync<InvalidDataException>(() => this.CreateBackup().BackUpAsync());
         }
@@ -432,6 +468,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         /// </summary>
         private void WriteCacheFiles()
         {
+            // an archive file, a legacy day file in its month folder and a day file in its day folder
             this.WriteCacheFile(FullFile, 1, 2, 3);
             this.WriteCacheFile(CallDayFile, 4);
             this.WriteCacheFile(OhlcvDayFile, 5);

@@ -146,7 +146,7 @@ namespace Databento.CSharpApiClient.Caching
                 throw this.Refuse(refusal, new DirectoryNotFoundException(Invariant($"The cache root {this.options.CacheRoot} does not exist.")));
             }
 
-            if(CacheMetadata.Read(this.options.CacheRoot) == null)
+            if(CacheMetadata.Read(this.options.CacheRoot, mark: false) == null)
             {
                 // an empty or wrongly mapped cache root would otherwise push the good backups out one run at a time
                 bool holdsFiles = Directory.EnumerateFileSystemEntries(this.options.CacheRoot).Any(entry => !CacheRootLock.IsLockFile(entry));
@@ -244,15 +244,15 @@ namespace Databento.CSharpApiClient.Caching
         }
 
         /// <summary>
-        /// Counts the day files anywhere under the cache root, stopping once the count reaches <paramref name="limit"/>
+        /// Counts the day files and legacy day files anywhere under the cache root, stopping once the count reaches <paramref name="limit"/>
         /// </summary>
         private int CountDayFiles(int limit, CancellationToken cancellationToken)
         {
             int count = 0;
-            foreach(string path in Directory.EnumerateFiles(this.options.CacheRoot, "*" + DayFileName.Extension, SearchOption.AllDirectories))
+            foreach(string path in Directory.EnumerateFiles(this.options.CacheRoot, "*", SearchOption.AllDirectories))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if(path.EndsWith(DayFileName.Extension, StringComparison.Ordinal) && ++count >= limit)
+                if(DayFileName.IsDayFile(path) && ++count >= limit)
                 {
                     break;
                 }

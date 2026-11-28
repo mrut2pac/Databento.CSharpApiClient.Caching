@@ -11,31 +11,24 @@ using Databento.CSharpApiClient.DataModel;
 namespace Databento.CSharpApiClient.Caching.Client
 {
     /// <summary>
-    /// A Databento schema as the cached client serves it: its archive columns, its day files' and batch files' readers, the timestamp
-    /// Databento filters a range on, which also decides a record's UTC day, and its download calls in either transport
+    /// A Databento schema as the cached client serves it: its day files, which also read batch files, the timestamp Databento filters a
+    /// range on, which also decides a record's UTC day, and its download calls in either transport. Records are held as the client's DBN
+    /// record type whichever transport brought them.
     /// </summary>
     /// <typeparam name="TSource">Record interface the calls return</typeparam>
-    /// <typeparam name="TRecord">Record type an archive read returns</typeparam>
-    /// <typeparam name="TJson">JSON record type, which day files hold and downloads are turned into</typeparam>
-    internal sealed class CachedSchema<TSource, TRecord, TJson> : ICachedSchema
+    /// <typeparam name="TRecord">DBN record type, which day files and archive reads give and downloads are turned into</typeparam>
+    internal sealed class CachedSchema<TSource, TRecord> : ICachedSchema
         where TSource : class, IRecord
         where TRecord : class, TSource
-        where TJson : class, TSource
     {
         public CachedSchema(
-            string name,
-            ArchiveRecordSchema<TSource, TRecord> archiveSchema,
-            Func<Stream, CancellationToken, IAsyncEnumerable<TJson>> readJson,
-            Func<Stream, CancellationToken, IAsyncEnumerable<TJson>> readDbn,
+            DayFileFormat<TSource, TRecord> format,
             Func<TSource, DateTime?> getFilterTime,
-            Action<TJson, string> setSymbol,
-            Func<DatabentoJsonClient, RangeRequest, Task<TJson[]>> downloadJson,
-            Func<DatabentoClient, RangeRequest, Task<TJson[]>> downloadDbn)
+            Action<TRecord, string> setSymbol,
+            Func<DatabentoJsonClient, RangeRequest, Task<TRecord[]>> downloadJson,
+            Func<DatabentoClient, RangeRequest, Task<TRecord[]>> downloadDbn)
         {
-            this.Name = name;
-            this.ArchiveSchema = archiveSchema;
-            this.ReadDayFile = readJson;
-            this.ReadDbn = readDbn;
+            this.Format = format;
             this.GetFilterTime = getFilterTime;
             this.SetSymbol = setSymbol;
             this.DownloadJson = downloadJson;
@@ -45,22 +38,27 @@ namespace Databento.CSharpApiClient.Caching.Client
         /// <summary>
         /// Gets Databento's name of the schema, e.g. <c>cbbo-1m</c>, which its folder carries.
         /// </summary>
-        public string Name { get; }
+        public string Name => this.Format.Schema;
+
+        /// <summary>
+        /// Gets the schema's day files.
+        /// </summary>
+        public DayFileFormat<TSource, TRecord> Format { get; }
 
         /// <summary>
         /// Gets the archive columns of the schema.
         /// </summary>
-        public ArchiveRecordSchema<TSource, TRecord> ArchiveSchema { get; }
+        public ArchiveRecordSchema<TSource, TRecord> ArchiveSchema => this.Format.RecordSchema;
 
         /// <summary>
-        /// Gets the reader of JSON records, an array or one a line, decompressed: a day file's, or a JSON batch file's.
+        /// Gets the reader of a JSON batch file's records, an array or one a line, decompressed, converted to the DBN record type.
         /// </summary>
-        public Func<Stream, CancellationToken, IAsyncEnumerable<TJson>> ReadDayFile { get; }
+        public Func<Stream, CancellationToken, IAsyncEnumerable<TRecord>> ReadJson => this.Format.ReadJsonAsync;
 
         /// <summary>
-        /// Gets the reader of a DBN stream's records as JSON records, each carrying the symbol the stream's metadata maps it to.
+        /// Gets the reader of a DBN stream's records, each carrying the symbol the stream's metadata maps it to.
         /// </summary>
-        public Func<Stream, CancellationToken, IAsyncEnumerable<TJson>> ReadDbn { get; }
+        public Func<Stream, CancellationToken, IAsyncEnumerable<TRecord>> ReadDbn => this.Format.ReadDbn;
 
         /// <summary>
         /// Gets the timestamp Databento filters a range on for the schema: <c>ts_recv</c> where the schema has one, else <c>ts_event</c>.
@@ -68,19 +66,19 @@ namespace Databento.CSharpApiClient.Caching.Client
         public Func<TSource, DateTime?> GetFilterTime { get; }
 
         /// <summary>
-        /// Gets the setter of a JSON record's symbol, for batch records that carry none and are mapped through the symbology lookup.
+        /// Gets the setter of a record's symbol, for batch records that carry none and are mapped through the symbology lookup.
         /// </summary>
-        public Action<TJson, string> SetSymbol { get; }
+        public Action<TRecord, string> SetSymbol { get; }
 
         /// <summary>
-        /// Gets the download of a range as JSON records.
+        /// Gets the download of a range as JSON records, converted to the DBN record type.
         /// </summary>
-        public Func<DatabentoJsonClient, RangeRequest, Task<TJson[]>> DownloadJson { get; }
+        public Func<DatabentoJsonClient, RangeRequest, Task<TRecord[]>> DownloadJson { get; }
 
         /// <summary>
-        /// Gets the download of a range as DBN records, converted to JSON records.
+        /// Gets the download of a range as DBN records.
         /// </summary>
-        public Func<DatabentoClient, RangeRequest, Task<TJson[]>> DownloadDbn { get; }
+        public Func<DatabentoClient, RangeRequest, Task<TRecord[]>> DownloadDbn { get; }
 
         public Task<BatchCounts> IngestAsync(BatchIngestion ingestion, BatchFolder folder, CancellationToken cancellationToken)
         {

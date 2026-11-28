@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 using Databento.CSharpApiClient.Caching.Archive;
 using Databento.CSharpApiClient.DataModel;
+using Databento.CSharpApiClient.DataModel.Dbn;
 using Databento.CSharpApiClient.DataModel.Json;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -259,7 +260,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         public async Task GetCbbo1sAsync_JsonTransport_DownloadsWithNoDbnClient()
         {
             using(CachedClientFixture fixture = new CachedClientFixture())
-            using(CachedDatabentoClient client = fixture.CreateClient())
+            using(CachedDatabentoClient client = fixture.CreateClient(options => options.Transport = DatabentoTransport.Json))
             {
                 fixture.Databento.Add(Schema.ConsolidatedBBO1Sec, OneSecond(Call, 1));
 
@@ -267,7 +268,24 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                 Assert.IsNull(client.DbnClient, "a client that downloads JSON never needs one");
                 Assert.AreEqual(1, served.Length);
+                Assert.IsInstanceOfType<CbboRecordDbn>(served[0], "converted as it is downloaded");
                 Assert.AreNotEqual("dbn", fixture.Databento.TimeseriesRequests[0].Fields.GetValueOrDefault("encoding"));
+            }
+        }
+
+        [TestMethod]
+        public async Task GetCbbo1sAsync_DefaultTransport_DownloadsDbn()
+        {
+            using(CachedClientFixture fixture = new CachedClientFixture())
+            using(CachedDatabentoClient client = fixture.CreateClient())
+            {
+                fixture.Databento.Add(Schema.ConsolidatedBBO1Sec, OneSecond(Call, 1));
+
+                ICbboRecord[] served = await client.GetCbbo1sAsync(Datasets.OpraPillar, new[] { Call }, DayStart, DayEnd);
+
+                Assert.IsNotNull(client.DbnClient);
+                Assert.AreEqual(1, served.Length);
+                Assert.AreEqual("dbn", fixture.Databento.TimeseriesRequests[0].Fields["encoding"]);
             }
         }
 
@@ -282,12 +300,12 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         }
 
         [TestMethod]
-        public async Task GetCbbo1sAsync_DbnTransport_SavesTheSameJsonRecordsAsTheJsonTransport()
+        public async Task GetCbbo1sAsync_DbnTransport_SavesTheSameRecordsAsTheJsonTransport()
         {
-            CbboRecordJson[] viaJson;
-            CbboRecordJson[] viaDbn;
+            CbboRecordDbn[] viaJson;
+            CbboRecordDbn[] viaDbn;
             using(CachedClientFixture fixture = new CachedClientFixture())
-            using(CachedDatabentoClient client = fixture.CreateClient())
+            using(CachedDatabentoClient client = fixture.CreateClient(options => options.Transport = DatabentoTransport.Json))
             {
                 fixture.Databento.Add(Schema.ConsolidatedBBO1Sec, OneSecond(Call, 1), OneSecond(Put, 2));
                 await client.GetCbbo1sAsync(Datasets.OpraPillar, new[] { Call, Put }, DayStart, DayEnd);
@@ -303,7 +321,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                 Assert.AreEqual("dbn", fixture.Databento.TimeseriesRequests[0].Fields["encoding"]);
                 CollectionAssert.AreEqual(new[] { Call, Put }, served.Select(record => record.Symbol).ToArray());
-                Assert.IsInstanceOfType<CbboRecordJson>(served[0]);
+                Assert.IsInstanceOfType<CbboRecordDbn>(served[0], "served as the DBN records day files hold, whichever the transport");
             }
 
             Assert.AreEqual(1, viaDbn.Length);

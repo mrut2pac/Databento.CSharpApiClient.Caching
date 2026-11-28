@@ -23,16 +23,14 @@ namespace Databento.CSharpApiClient.Caching.Compaction
     /// absorbed day files retired. Anything that fails before publishing leaves the folder as it was.
     /// </summary>
     /// <typeparam name="TSource">Record interface</typeparam>
-    /// <typeparam name="TRecord">Record type an archive read returns</typeparam>
-    /// <typeparam name="TJson">Record type a day file holds</typeparam>
-    internal sealed class ArchiveGroupCompaction<TSource, TRecord, TJson>
+    /// <typeparam name="TRecord">Record type day files and archive reads give</typeparam>
+    internal sealed class ArchiveGroupCompaction<TSource, TRecord>
         where TSource : class, IRecord
         where TRecord : class, TSource
-        where TJson : class, TSource
     {
         private static readonly Comparer<(string Symbol, int Day)> IndexOrder = Comparer<(string Symbol, int Day)>.Create(CompareInIndexOrder);
 
-        private readonly ArchiveSchemaHandler<TSource, TRecord, TJson> handler;
+        private readonly ArchiveSchemaHandler<TSource, TRecord> handler;
 
         private readonly ArchiveRecordSchema<TSource, TRecord> schema;
 
@@ -74,7 +72,7 @@ namespace Databento.CSharpApiClient.Caching.Compaction
         /// </summary>
         private bool rebuild;
 
-        public ArchiveGroupCompaction(ArchiveSchemaHandler<TSource, TRecord, TJson> handler, ArchiveGroupRequest request, CompactionRun run)
+        public ArchiveGroupCompaction(ArchiveSchemaHandler<TSource, TRecord> handler, ArchiveGroupRequest request, CompactionRun run)
         {
             this.handler = handler;
             this.schema = handler.RecordSchema;
@@ -434,10 +432,10 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                     continue;
                 }
 
-                TJson[] dayFileRecords;
+                TRecord[] dayFileRecords;
                 try
                 {
-                    dayFileRecords = await DayFile.ReadAsync(source.Value.Path, this.handler.ReadDayFile, cancellationToken).ConfigureAwait(false);
+                    dayFileRecords = await DayFile.ReadAsync(source.Value.Path, this.handler.Format, cancellationToken).ConfigureAwait(false);
                 }
                 catch(Exception ex) when(IsUnreadable(ex))
                 {
@@ -473,7 +471,7 @@ namespace Databento.CSharpApiClient.Caching.Compaction
             return ex is InvalidDataException || ex is JsonException || ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException;
         }
 
-        private bool HoldSameRecords(TJson[] dayFileRecords, TRecord[] servedRecords)
+        private bool HoldSameRecords(TRecord[] dayFileRecords, TRecord[] servedRecords)
         {
             if(servedRecords == null || dayFileRecords.Length != servedRecords.Length || dayFileRecords.Any(record => record == null))
             {
@@ -579,8 +577,8 @@ namespace Databento.CSharpApiClient.Caching.Compaction
         {
             try
             {
-                TJson[] records = await DayFile.ReadAsync(dayFile.Path, this.handler.ReadDayFile, cancellationToken).ConfigureAwait(false);
-                foreach(TJson record in records)
+                TRecord[] records = await DayFile.ReadAsync(dayFile.Path, this.handler.Format, cancellationToken).ConfigureAwait(false);
+                foreach(TRecord record in records)
                 {
                     string problem = this.schema.FindUnwritableValue(record);
                     if(problem != null)
@@ -640,7 +638,7 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                         DateTime date = new DateTime(this.request.Year, this.request.Month, entry.Day);
                         FoundDayFile dayFile = this.sources[(entry.Symbol, entry.Day)];
                         TSource[] expected = dayFile != null
-                            ? await DayFile.ReadAsync(dayFile.Path, this.handler.ReadDayFile, cancellationToken).ConfigureAwait(false)
+                            ? await DayFile.ReadAsync(dayFile.Path, this.handler.Format, cancellationToken).ConfigureAwait(false)
                             : await this.FindCurrentCopy((entry.Symbol, entry.Day)).ReadSymbolDayAsync(entry.Symbol, date).ConfigureAwait(false);
                         TRecord[] actual = await written.ReadSymbolDayAsync(entry.Symbol, date).ConfigureAwait(false);
                         if(expected == null || actual == null || expected.Length != actual.Length)
@@ -663,8 +661,8 @@ namespace Databento.CSharpApiClient.Caching.Compaction
 
         /// <summary>
         /// Retires the files outside the current version whose days it lists (the files the published one replaces, and what a killed run
-        /// left) and the day files the version now holds (absorbed, or matching what it served) or that were dropped, each day file only
-        /// while still as the run found it. The published file was checked; until a backup holds it, it is the only copy of the absorbed
+        /// left) and the day files the version now holds (absorbed, or matching what it served) or that were dropped, with the legacy day
+        /// files they superseded, each day file only while still as the run found it. The published file was checked; until a backup holds it, it is the only copy of the absorbed
         /// day files, as they were before the run.
         /// </summary>
         /// <param name="outsideFiles">The full files and deltas outside the version as it stands after the run</param>
@@ -690,7 +688,7 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                 }
             }
 
-            foreach(FoundDayFile dayFile in dayFiles)
+            foreach(FoundDayFile dayFile in dayFiles.SelectMany(dayFile => dayFile.Superseded == null ? new[] { dayFile } : new[] { dayFile, dayFile.Superseded }))
             {
                 // checked before every attempt: a day downloaded again during a retry's wait is the next run's to absorb
                 switch(await this.run.FileOperations.DeleteAsync(dayFile.Path, () => IsAsFound(dayFile), cancellationToken).ConfigureAwait(false))
@@ -706,6 +704,30 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                         this.run.Report.FileLeft(this.ToRelativePath(dayFile));
                         break;
                 }
+            }
+
+            if(this.options.DeleteEmptyDayDirectories)
+            {
+                foreach(string directory in dayFiles.Select(dayFile => Path.GetDirectoryName(dayFile.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Where(directory => !string.Equals(directory, this.request.Directory, StringComparison.OrdinalIgnoreCase)))
+                {
+                    TryDeleteEmptyDirectory(directory);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Deletes a day folder the run emptied, unless it holds anything: a day file a client saved just now, or one of another group,
+        /// keeps it. A client finding it gone creates it again.
+        /// </summary>
+        private static void TryDeleteEmptyDirectory(string directory)
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: false);
+            }
+            catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
+            {
+                // not empty, gone already, or in use: left for the next run
             }
         }
 

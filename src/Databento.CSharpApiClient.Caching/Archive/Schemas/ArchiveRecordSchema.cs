@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 using Databento.CSharpApiClient.Caching.Archive.Columns;
@@ -59,6 +60,37 @@ namespace Databento.CSharpApiClient.Caching.Archive.Schemas
         /// Creates an empty record of a raw symbol for a read to fill, with every nested object a column sets already in place
         /// </summary>
         internal abstract TRecord CreateRecord(string rawSymbol);
+
+        /// <summary>
+        /// Gets a record as the schema's record type: itself when it is one, else a copy of every value the archive stores of it, such as
+        /// a JSON record's, taken through the record interface
+        /// </summary>
+        /// <param name="source">Record to convert</param>
+        /// <returns>The record of the schema's record type, with the source's symbol</returns>
+        /// <exception cref="InvalidDataException">The source cannot give one of the values, see <see cref="FindUnwritableValue"/></exception>
+        internal TRecord ToRecord(TSource source)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            if(source is TRecord record)
+            {
+                return record;
+            }
+
+            TRecord converted = this.CreateRecord(source.Symbol);
+            foreach(ArchiveColumn<TSource, TRecord> column in this.Columns)
+            {
+                try
+                {
+                    column.Copy(source, converted);
+                }
+                catch(OverflowException ex)
+                {
+                    throw new InvalidDataException(Invariant($"Column {column.Field.Name} holds a value the record interface cannot give: {ex.Message}"), ex);
+                }
+            }
+
+            return converted;
+        }
 
         /// <summary>
         /// Finds the first column in which a record read back differs from the record written

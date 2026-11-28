@@ -211,7 +211,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
                 fixture.Databento.Add(Schema.ConsolidatedBBO1Min, Cbbo(Call, Day, 1));
 
                 ICbboRecord[] served = await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
-                Databento.CSharpApiClient.DataModel.Json.CbboRecordJson[] savedWithinTheDelay = fixture.ReadCbboDayFile(Call, Day);
+                Databento.CSharpApiClient.DataModel.Dbn.CbboRecordDbn[] savedWithinTheDelay = fixture.ReadCbboDayFile(Call, Day);
                 fixture.Clock.SetUtcNow(Day.AddDays(1).AddHours(1));
                 await client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd);
 
@@ -498,7 +498,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
 
                 await Assert.ThrowsExceptionAsync<DatabentoHttpException>(() => client.GetCbbo1mAsync(Datasets.OpraPillar, Call, DayStart, DayEnd));
 
-                Assert.IsFalse(Directory.Exists(fixture.Cache.CbboDirectory) && Directory.GetFiles(fixture.Cache.CbboDirectory).Length > 0);
+                Assert.IsFalse(Directory.Exists(fixture.Cache.CbboDirectory) && Directory.GetFiles(fixture.Cache.CbboDirectory, "*", SearchOption.AllDirectories).Length > 0);
             }
         }
 
@@ -612,7 +612,7 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         {
             using(CachedClientFixture fixture = new CachedClientFixture())
             {
-                File.WriteAllText(Path.Combine(fixture.Cache.Root, CacheMetadata.FileName), "{\"format_version\":2,\"day_cutoff\":\"UTC\"}");
+                File.WriteAllText(Path.Combine(fixture.Cache.Root, CacheMetadata.FileName), "{\"format_version\":3,\"day_cutoff\":\"UTC\"}");
 
                 Assert.ThrowsException<InvalidDataException>(() => fixture.CreateClient());
             }

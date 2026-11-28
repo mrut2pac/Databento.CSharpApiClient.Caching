@@ -19,7 +19,7 @@ namespace Databento.CSharpApiClient.Caching
         }
 
         /// <summary>
-        /// Gets the day file's path under the cache root, e.g. <c>OPRA.PILLAR\cbbo-1m\2026\10\SPXW%20%20261016C06600000_2026-10-16.UTC.json.gz</c>.
+        /// Gets the day file's path under the cache root, e.g. <c>OPRA.PILLAR\cbbo-1m\2026\10\16\SPXW%20%20261016C06600000_2026-10-16.UTC.dbn.zst</c>.
         /// </summary>
         public string RelativePath { get; }
 

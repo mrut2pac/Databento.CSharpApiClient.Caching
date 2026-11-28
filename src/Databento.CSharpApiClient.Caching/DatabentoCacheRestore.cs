@@ -220,7 +220,7 @@ namespace Databento.CSharpApiClient.Caching
 
         private static bool IsDayFile(string path)
         {
-            return path.EndsWith(DayFileName.Extension, StringComparison.Ordinal);
+            return DayFileName.IsDayFile(path);
         }
 
         private static int CountFiles(string entry)
