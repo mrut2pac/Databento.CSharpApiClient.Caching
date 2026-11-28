@@ -19,7 +19,17 @@ cd benchmarks/Databento.CSharpApiClient.Caching.Benchmarks/bin/Release/net8.0
 ./Databento.CSharpApiClient.Caching.Benchmarks all --settings benchmark.json
 ```
 
-Set `WorkFolder` first: everything is written under it. The shipped settings need about 40 GB at the peak, and the run takes about two hours. Excluding the folder from antivirus scanning makes the day-file steps much faster, since every file written or read is otherwise scanned.
+Set `WorkFolder` first: everything is written under it. The shipped settings needed about 40 GB at the peak and about two hours before `unpack` joined `all`; the unpacked copy now adds its day files beside the compacted cache and the backup, and the unpack and its queries add to the time. Excluding the folder from antivirus scanning makes the day-file steps much faster, since every file written or read is otherwise scanned.
+
+### The mini suite
+
+`benchmark-mini.json` measures the same things in about an hour, for a before-and-after of a change while it is worked on; the full suite is for the numbers a release states. It keeps the three instruments and the queries but covers 12 months, with SPXW on 60 strikes a side instead of 100: about 521,000 contract-days, a quarter of the full suite's. It still has 36 group-months, more than the 32 archive versions the client keeps open, so random archive reads still reopen files. It needs about 15 GB at the peak.
+
+```bash
+./Databento.CSharpApiClient.Caching.Benchmarks all --settings benchmark-mini.json
+```
+
+Its numbers compare with another run of the mini suite on the same machine, not with the full suite's: its month files are smaller, and so are their footers.
 
 `all` runs these steps in order. Each can also be run alone, and each saves its results under `WorkFolder/results`:
 
@@ -31,6 +41,8 @@ Set `WorkFolder` first: everything is written under it. The shipped settings nee
 | `backup` | Backs the cache up with `DatabentoCacheBackup` to `WorkFolder/backups`. |
 | `restore` | Restores that backup into `WorkFolder/restored`, which must be empty. |
 | `verify` | Runs the queries against the restored cache. |
+| `unpack` | Unpacks the restored cache's archive back into day files with `DatabentoArchiveUnpacker` and `MaxParallelGroups`. |
+| `unpacked` | Runs the queries against the unpacked cache: day files again, as unpacking wrote them. |
 | `report` | Writes `WorkFolder/report.md` from the saved results. |
 
 To measure a cache kept as day files instead, run `seed`, `query`, `backup`, `restore`, `verify` and `report` one at a time in a new `WorkFolder`, leaving out `compact`. The shipped settings then need about 60 GB at the peak (the day files, the backup's tar and the restored copy), and the backup and restore of 2 million day files take about 2 h 40 min on the machine in [report-dayfiles.md](../report-dayfiles.md). The two reports in [`benchmarks/`](..) are a run of each on the same seed and data: [report.md](../report.md), compacted, and [report-dayfiles.md](../report-dayfiles.md), kept as day files. The day-file query rows of both reports come from the day-file run, whose results measure the working set; the compacted run's own day-file queries predate that measure.

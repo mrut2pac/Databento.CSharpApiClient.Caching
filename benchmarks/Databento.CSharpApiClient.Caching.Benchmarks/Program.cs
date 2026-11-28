@@ -9,11 +9,12 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
 {
     /// <summary>
     /// Runs the benchmark steps on synthetic data: <c>seed</c>, <c>query</c>, <c>compact</c>, <c>query</c> again, <c>backup</c>,
-    /// <c>restore</c>, <c>verify</c> and <c>report</c>, one per call or all of them with <c>all</c>. No step calls Databento.
+    /// <c>restore</c>, <c>verify</c>, <c>unpack</c>, <c>unpacked</c> and <c>report</c>, one per call or all of them with <c>all</c>. No step
+    /// calls Databento.
     /// </summary>
     internal static class Program
     {
-        private const string Usage = "Usage: Databento.CSharpApiClient.Caching.Benchmarks <seed|query|compact|backup|restore|verify|report|all> [--settings benchmark.json]";
+        private const string Usage = "Usage: Databento.CSharpApiClient.Caching.Benchmarks <seed|query|compact|backup|restore|verify|unpack|unpacked|report|all> [--settings benchmark.json]";
 
         public static async Task<int> Main(string[] args)
         {
@@ -44,7 +45,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
             try
             {
                 string command = args[0].ToLowerInvariant();
-                string[] steps = command == "all" ? new[] { "seed", "query", "compact", "query", "backup", "restore", "verify", "report" } : new[] { command };
+                string[] steps = command == "all" ? new[] { "seed", "query", "compact", "query", "backup", "restore", "verify", "unpack", "unpacked", "report" } : new[] { command };
                 foreach(string step in steps)
                 {
                     await RunStepAsync(step, settings, market, cancel.Token).ConfigureAwait(false);
@@ -81,6 +82,12 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
                     break;
                 case "verify":
                     await QueryStep.RunAsync(settings, market, settings.RestoredRoot, "restored", cancellationToken).ConfigureAwait(false);
+                    break;
+                case "unpack":
+                    await MaintenanceSteps.UnpackAsync(settings, cancellationToken).ConfigureAwait(false);
+                    break;
+                case "unpacked":
+                    await QueryStep.RunAsync(settings, market, settings.RestoredRoot, "unpacked", cancellationToken).ConfigureAwait(false);
                     break;
                 case "report":
                     string report = ReportWriter.Write(settings, market, StepResult.ReadAll(settings.ResultsFolder));

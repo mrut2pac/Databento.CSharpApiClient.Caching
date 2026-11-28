@@ -90,34 +90,14 @@ namespace Databento.CSharpApiClient.Caching.Cache
             where TSource : class, IRecord
             where TRecord : class, TSource
         {
-            ArgumentNullException.ThrowIfNull(records);
-
-            // the metadata checked on its own, so the writer's refusal below can only be a record's
-            DbnMetadata metadata = CreateMetadata(format.DbnSchema, dataset, symbol, day, records);
-            using(BinaryWriter check = new BinaryWriter(Stream.Null))
-            {
-                metadata.WriteToBinaryWriter(check);
-            }
-
+            DbnMetadata metadata = CreateCheckedMetadata(format, dataset, symbol, day, records);
             string temporaryPath = Invariant($"{path}.{Guid.NewGuid():N}.tmp");
             try
             {
                 FileStream file = CreateTemporaryFile(temporaryPath, directoryCreated);
                 await using(file.ConfigureAwait(false))
                 {
-                    CompressionStream dbn = new CompressionStream(file, ZstdLevel, leaveOpen: true);
-                    await using(dbn.ConfigureAwait(false))
-                    {
-                        try
-                        {
-                            await format.WriteDbn(dbn, metadata, ToAsyncEnumerable(records), cancellationToken).ConfigureAwait(false);
-                        }
-                        catch(ArgumentException ex)
-                        {
-                            throw new InvalidDataException(Invariant($"A record of {symbol} {day:yyyy-MM-dd} cannot be written as DBN: {ex.Message}"), ex);
-                        }
-                    }
-
+                    await EncodeAsync(file, format, metadata, symbol, day, records, cancellationToken).ConfigureAwait(false);
                     file.Flush(flushToDisk: true);
                 }
 
@@ -137,6 +117,23 @@ namespace Databento.CSharpApiClient.Caching.Cache
                 {
                     File.Delete(temporaryPath);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Gets the size a day file of these records takes, written as <see cref="WriteAsync"/> writes it, without writing it
+        /// </summary>
+        /// <returns>The file's size in bytes</returns>
+        /// <exception cref="InvalidDataException">A record holds a value DBN cannot hold</exception>
+        public static async Task<long> MeasureAsync<TSource, TRecord>(DayFileFormat<TSource, TRecord> format, string dataset, string symbol, DateTime day, IReadOnlyList<TRecord> records, CancellationToken cancellationToken)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+        {
+            DbnMetadata metadata = CreateCheckedMetadata(format, dataset, symbol, day, records);
+            using(MemoryStream file = new MemoryStream())
+            {
+                await EncodeAsync(file, format, metadata, symbol, day, records, cancellationToken).ConfigureAwait(false);
+                return file.Length;
             }
         }
 
@@ -196,6 +193,46 @@ namespace Databento.CSharpApiClient.Caching.Cache
                 catch(DirectoryNotFoundException) when(attempt == 1)
                 {
                     // deleted by a compaction just after it was created
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets a day file's metadata, checked on its own, so the writer's refusal of a record can only be a record's
+        /// </summary>
+        /// <exception cref="ArgumentException">The dataset or symbol cannot be written in DBN metadata</exception>
+        private static DbnMetadata CreateCheckedMetadata<TSource, TRecord>(DayFileFormat<TSource, TRecord> format, string dataset, string symbol, DateTime day, IReadOnlyList<TRecord> records)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+        {
+            ArgumentNullException.ThrowIfNull(records);
+
+            DbnMetadata metadata = CreateMetadata(format.DbnSchema, dataset, symbol, day, records);
+            using(BinaryWriter check = new BinaryWriter(Stream.Null))
+            {
+                metadata.WriteToBinaryWriter(check);
+            }
+
+            return metadata;
+        }
+
+        /// <summary>
+        /// Writes the records as zstd-compressed DBN into a stream, left open
+        /// </summary>
+        private static async Task EncodeAsync<TSource, TRecord>(Stream file, DayFileFormat<TSource, TRecord> format, DbnMetadata metadata, string symbol, DateTime day, IReadOnlyList<TRecord> records, CancellationToken cancellationToken)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+        {
+            CompressionStream dbn = new CompressionStream(file, ZstdLevel, leaveOpen: true);
+            await using(dbn.ConfigureAwait(false))
+            {
+                try
+                {
+                    await format.WriteDbn(dbn, metadata, ToAsyncEnumerable(records), cancellationToken).ConfigureAwait(false);
+                }
+                catch(ArgumentException ex)
+                {
+                    throw new InvalidDataException(Invariant($"A record of {symbol} {day:yyyy-MM-dd} cannot be written as DBN: {ex.Message}"), ex);
                 }
             }
         }

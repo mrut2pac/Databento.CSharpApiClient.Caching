@@ -53,6 +53,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
             AppendStep(text, results, "compact", step => Invariant($"{step.Values["DayFilesAbsorbed"]:N0} day files into {step.Values["FullFilesWritten"]:N0} Parquet files, {step.Values["BytesBefore"] / 1e9:N2} GB to {step.Values["BytesAfter"] / 1e9:N2} GB"), step => Invariant($"{step.Values["DayFilesPerSecond"]:N0} files/s, {step.Values["RowsPerSecond"] / 1e6:N1} M rows/s"));
             AppendStep(text, results, "backup", step => Invariant($"{step.Values["Files"]:N0} files, {step.Values["Bytes"] / 1e9:N2} GB"), step => MegabytesPerSecond(step.Values["MBPerSecond"]));
             AppendStep(text, results, "restore", step => Invariant($"{step.Values["Files"]:N0} files, {step.Values["Bytes"] / 1e9:N2} GB"), step => MegabytesPerSecond(step.Values["MBPerSecond"]));
+            AppendStep(text, results, "unpack", step => Invariant($"{step.Values["ArchiveFilesDeleted"]:N0} archive files into {step.Values["DayFilesWritten"]:N0} day files, {step.Values["BytesBefore"] / 1e9:N2} GB to {step.Values["BytesAfter"] / 1e9:N2} GB"), step => Invariant($"{step.Values["DayFilesPerSecond"]:N0} files/s"));
             AppendNotMeasuredNote(text, stepsTable);
 
             text.AppendLine();
@@ -79,7 +80,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
         private static void AppendSummary(StringBuilder text, IReadOnlyDictionary<string, StepResult> results)
         {
             List<(string Cache, QueryPassResult Pass)> passes = new List<(string, QueryPassResult)>();
-            foreach(string cache in new[] { "dayfiles", "archive" })
+            foreach(string cache in new[] { "dayfiles", "archive", "unpacked" })
             {
                 if(results.TryGetValue("query-" + cache, out StepResult step))
                 {
@@ -95,7 +96,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
             text.AppendLine();
             text.AppendLine("## Summary");
             text.AppendLine();
-            text.AppendLine("Reading one contract's day, first pass on a new client. *Day files* is the cache as downloads leave it; *archive* is after compaction into monthly Parquet files.");
+            text.AppendLine("Reading one contract's day, first pass on a new client. *Day files* is the cache as downloads leave it; *archive* is after compaction into monthly Parquet files; *unpacked* is the restored archive unpacked back into day files.");
             text.AppendLine();
             int summaryTable = text.Length;
             text.AppendLine("| Cache | Order | Readers | Mean | p99 | Reads/s | Peak working set |");
