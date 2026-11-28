@@ -1,0 +1,41 @@
+{
+  "WorkFolder": "",
+  "StartDate": "2025-11-03",
+  "EndDate": "2026-10-30",
+  "Parallelism": 8,
+  "MaxParallelGroups": 8,
+  "RandomQueries": 2000,
+  "SequentialQueries": 2000,
+  "QueryParallelism": [ 1, 8 ],
+  "Seed": 20261127,
+  "Instruments": [
+    {
+      "Root": "SPXW",
+      "Kind": "Option",
+      "Price": 5000,
+      "StrikeStep": 5,
+      "StrikesPerSide": 60,
+      "Expirations": 5,
+      "RecordsPerDay": 390,
+      "FirstMinuteUtc": 810
+    },
+    {
+      "Root": "SPY",
+      "Kind": "Option",
+      "Price": 500,
+      "StrikeStep": 1,
+      "StrikesPerSide": 40,
+      "Expirations": 5,
+      "RecordsPerDay": 390,
+      "FirstMinuteUtc": 810
+    },
+    {
+      "Root": "MES",
+      "Kind": "Future",
+      "Price": 5000,
+      "Expirations": 3,
+      "RecordsPerDay": 1380,
+      "FirstMinuteUtc": 0
+    }
+  ]
+}

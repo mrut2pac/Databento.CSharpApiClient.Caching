@@ -82,7 +82,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <param name="cancellationToken">Cancellation token; once the files are being swapped the restore runs to its end</param>
         /// <returns>What the restore did, or for a dry run what a real one would do to the cache</returns>
         /// <exception cref="ArgumentException">The name is no backup's, or the store holds no backup of that name</exception>
-        /// <exception cref="InvalidOperationException">The in-use checker reports the cache in use, an archive file is open (seen on Windows only), or a compaction, backup or restore holds the root's lock</exception>
+        /// <exception cref="InvalidOperationException">The in-use checker reports the cache in use, an archive file is open (seen on Windows only), or a compaction, backup, restore or unpack holds the root's lock</exception>
         /// <exception cref="InvalidDataException">The backup is damaged, differs from its manifest, or holds no <c>metadata.json</c> this package accepts</exception>
         /// <exception cref="IOException">The store cannot be read, or a file cannot be moved into the cache; during the swap the marker stays</exception>
         public async Task<CacheRestoreReport> RestoreAsync(string backupName, CancellationToken cancellationToken = default)

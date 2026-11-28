@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Databento.CSharpApiClient.Caching.Benchmarks
 {
     /// <summary>
-    /// The compaction, backup and restore steps, each through the package's public API with its defaults except where the settings say
+    /// The compaction, backup, restore and unpack steps, each through the package's public API with its defaults except where the settings say
     /// </summary>
     internal static class MaintenanceSteps
     {
@@ -107,6 +107,38 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
             result.Values["MBPerSecond"] = report.TotalBytes / 1024.0 / 1024.0 / Math.Max(0.001, use.ElapsedSeconds);
             result.Save(settings.ResultsFolder);
             Console.WriteLine(Invariant($"Restore done: {report.FileCount:N0} files, {report.TotalBytes / 1e9:N2} GB in {use.ElapsedSeconds:N0} s ({result.Values["MBPerSecond"]:N0} MB/s), peak {use.PeakWorkingSetMB:N0} MB working set, {use.PeakPrivateMemoryMB:N0} MB committed"));
+        }
+
+        /// <summary>
+        /// Unpacks the restored cache's archive back into day files, so the queries after it read the day files unpacking wrote
+        /// </summary>
+        public static async Task UnpackAsync(BenchmarkSettings settings, CancellationToken cancellationToken)
+        {
+            Console.WriteLine(Invariant($"Unpacking {settings.RestoredRoot} with MaxParallelGroups {settings.MaxParallelGroups}"));
+            long bytesBefore = FolderBytes(settings.RestoredRoot);
+            using ResourceSampler sampler = new ResourceSampler();
+            DatabentoArchiveUnpacker unpacker = new DatabentoArchiveUnpacker(new ArchiveUnpackerOptions
+            {
+                CacheRoot = settings.RestoredRoot,
+                MaxParallelGroups = settings.MaxParallelGroups,
+            });
+            ArchiveUnpackReport report = await unpacker.UnpackAsync(cancellationToken).ConfigureAwait(false);
+
+            ResourceUse use = sampler.Stop();
+            StepResult result = new StepResult { Name = "unpack", Resources = use };
+            result.Values["GroupsUnpacked"] = report.GroupsUnpacked;
+            result.Values["DayFilesWritten"] = report.DayFilesWritten;
+            result.Values["ArchiveFilesDeleted"] = report.ArchiveFilesDeleted;
+            result.Values["BytesBefore"] = bytesBefore;
+            result.Values["BytesAfter"] = FolderBytes(settings.RestoredRoot);
+            result.Values["FailedGroups"] = report.FailedGroups.Count;
+            result.Values["DayFilesPerSecond"] = report.DayFilesWritten / Math.Max(0.001, use.ElapsedSeconds);
+            result.Save(settings.ResultsFolder);
+            Console.WriteLine(Invariant($"Unpack done: {report.ArchiveFilesDeleted:N0} archive files into {report.DayFilesWritten:N0} day files, {bytesBefore / 1e9:N2} GB to {result.Values["BytesAfter"] / 1e9:N2} GB in {use.ElapsedSeconds:N0} s, peak {use.PeakWorkingSetMB:N0} MB working set, {use.PeakPrivateMemoryMB:N0} MB committed, {use.AverageCoresBusy:N1} cores"));
+            if(report.FailedGroups.Count > 0)
+            {
+                throw new InvalidDataException(Invariant($"{report.FailedGroups.Count} groups failed to unpack; the first: {report.FailedGroups[0].Group}: {report.FailedGroups[0].Exception.Message}"));
+            }
         }
 
         private static long FolderBytes(string folder)

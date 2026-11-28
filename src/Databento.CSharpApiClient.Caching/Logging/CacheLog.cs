@@ -286,6 +286,32 @@ namespace Databento.CSharpApiClient.Caching.Logging
         [LoggerMessage(EventId = 5011, Level = LogLevel.Information, Message = "Restoring {CacheRoot} from {Name} canceled")]
         public static partial void RestoreCanceled(this ILogger logger, string cacheRoot, string name);
 
+        // unpacking
+
+        [LoggerMessage(EventId = 6001, Level = LogLevel.Information, Message = "Unpacking the archive of {CacheRoot} into day files{DryRun} ...")]
+        public static partial void UnpackStarted(this ILogger logger, string cacheRoot, string dryRun);
+
+        [LoggerMessage(EventId = 6002, Level = LogLevel.Information, Message = "Unpacking {CacheRoot} done: {GroupsUnpacked:N0} group(s) unpacked, {FailedGroups:N0} failed, {DayFilesWritten:N0} day file(s) written, {DayFilesKept:N0} kept, {ArchiveFilesDeleted:N0} archive file(s) deleted")]
+        public static partial void UnpackFinished(this ILogger logger, string cacheRoot, int groupsUnpacked, int failedGroups, long dayFilesWritten, long dayFilesKept, long archiveFilesDeleted);
+
+        [LoggerMessage(EventId = 6003, Level = LogLevel.Information, Message = "Unpacking {CacheRoot} canceled after {GroupsUnpacked:N0} group(s) unpacked; the archive of the group in flight is kept")]
+        public static partial void UnpackCanceled(this ILogger logger, string cacheRoot, int groupsUnpacked);
+
+        [LoggerMessage(EventId = 6004, Level = LogLevel.Debug, Message = "Unpacked {Group}: {DayFilesWritten:N0} day file(s) written, {DayFilesKept:N0} kept")]
+        public static partial void GroupUnpacked(this ILogger logger, string group, int dayFilesWritten, int dayFilesKept);
+
+        [LoggerMessage(EventId = 6005, Level = LogLevel.Error, Message = "Unpacking {Group} failed, so its archive is kept: {Error}")]
+        public static partial void UnpackGroupFailed(this ILogger logger, string group, string error, Exception exception);
+
+        [LoggerMessage(EventId = 6006, Level = LogLevel.Warning, Message = "Unpacking {CacheRoot} refused: {Reason}")]
+        public static partial void UnpackRefused(this ILogger logger, string cacheRoot, string reason);
+
+        [LoggerMessage(EventId = 6007, Level = LogLevel.Error, Message = "Unpacking {CacheRoot} failed; the groups not yet unpacked are left as they were")]
+        public static partial void UnpackFailed(this ILogger logger, string cacheRoot, Exception exception);
+
+        [LoggerMessage(EventId = 6008, Level = LogLevel.Warning, Message = "Unpacking {CacheRoot} left {FilesLeft:N0} archive file(s) it could not delete, listed in the report; their days are day files, which are served first")]
+        public static partial void UnpackFilesLeft(this ILogger logger, string cacheRoot, int filesLeft);
+
         /// <summary>
         /// Logs the start of a time-series request
         /// </summary>

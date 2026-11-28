@@ -47,6 +47,11 @@ namespace Databento.CSharpApiClient.Caching.Client
         public string Cutoff { get; }
 
         /// <summary>
+        /// Gets or sets what is called when a read finds no day file, before it goes to the archive, so a test can unpack the day just then.
+        /// </summary>
+        internal Action DayFileMissed { get; set; }
+
+        /// <summary>
         /// Gets how many times a month folder was listed, for tests.
         /// </summary>
         internal long MonthFolderListings => Interlocked.Read(ref this.monthFolderListings);
@@ -75,26 +80,26 @@ namespace Databento.CSharpApiClient.Caching.Client
             where TSource : class, IRecord
             where TRecord : class, TSource
         {
-            foreach(string path in new[] { DayFileName.GetPath(folder.Directory, symbol, day, this.Cutoff), DayFileName.GetLegacyPath(folder.Directory, symbol, day, this.Cutoff) })
+            TRecord[] fromDayFile = await this.TryReadDayFilesAsync(schema.Format, folder, symbol, day, logServed, cancellationToken).ConfigureAwait(false);
+            if(fromDayFile != null)
             {
-                TRecord[] records = await this.TryReadDayFileAsync(schema.Format, path, cancellationToken).ConfigureAwait(false);
-                if(records != null)
-                {
-                    if(logServed)
-                    {
-                        this.logger.ServedFromDayFile(symbol, day, folder.Schema, Path.GetFileName(path), records.Length);
-                    }
-
-                    return records;
-                }
+                return fromDayFile;
             }
+
+            this.DayFileMissed?.Invoke();
 
             // listed here, not inside the archive read, so a folder that cannot be listed fails the request rather than reading as not cached
             _ = folder.ArchiveFiles;
             TRecord[] archived = await this.catalog.ReadSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, logServed).ConfigureAwait(false);
             if(archived == null && folder.RefreshIfChanged())
             {
-                // a compaction since the listing may have absorbed the day file and deleted it
+                // a compaction since the listing may have absorbed the day file and deleted it, or an unpack written it and retired the archive
+                fromDayFile = await this.TryReadDayFilesAsync(schema.Format, folder, symbol, day, logServed, cancellationToken).ConfigureAwait(false);
+                if(fromDayFile != null)
+                {
+                    return fromDayFile;
+                }
+
                 _ = folder.ArchiveFiles;
                 archived = await this.catalog.ReadSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, logServed).ConfigureAwait(false);
             }
@@ -131,9 +136,14 @@ namespace Databento.CSharpApiClient.Caching.Client
                 return true;
             }
 
-            // a compaction since the listing may have absorbed the day file and deleted it
+            // a compaction since the listing may have absorbed the day file and deleted it, or an unpack written it and retired the archive
             if(folder.RefreshIfChanged())
             {
+                if(DayFileExists(DayFileName.GetPath(folder.Directory, symbol, day, this.Cutoff)) || DayFileExists(DayFileName.GetLegacyPath(folder.Directory, symbol, day, this.Cutoff)))
+                {
+                    return true;
+                }
+
                 _ = folder.ArchiveFiles;
                 return await this.catalog.ContainsSymbolDayAsync(schema.ArchiveSchema, folder, symbol, day, strict).ConfigureAwait(false);
             }
@@ -205,6 +215,31 @@ namespace Databento.CSharpApiClient.Caching.Client
             }
 
             return saved;
+        }
+
+        /// <summary>
+        /// Reads a symbol-day's day file, else its legacy day file
+        /// </summary>
+        /// <returns>The records, or <c>null</c> when neither is there and readable</returns>
+        private async Task<TRecord[]> TryReadDayFilesAsync<TSource, TRecord>(DayFileFormat<TSource, TRecord> format, CacheMonthFolder folder, string symbol, DateTime day, bool logServed, CancellationToken cancellationToken)
+            where TSource : class, IRecord
+            where TRecord : class, TSource
+        {
+            foreach(string path in new[] { DayFileName.GetPath(folder.Directory, symbol, day, this.Cutoff), DayFileName.GetLegacyPath(folder.Directory, symbol, day, this.Cutoff) })
+            {
+                TRecord[] records = await this.TryReadDayFileAsync(format, path, cancellationToken).ConfigureAwait(false);
+                if(records != null)
+                {
+                    if(logServed)
+                    {
+                        this.logger.ServedFromDayFile(symbol, day, folder.Schema, Path.GetFileName(path), records.Length);
+                    }
+
+                    return records;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

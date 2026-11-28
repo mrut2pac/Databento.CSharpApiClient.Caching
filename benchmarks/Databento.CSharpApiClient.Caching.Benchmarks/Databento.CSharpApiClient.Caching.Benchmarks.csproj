@@ -17,5 +17,6 @@
 
   <ItemGroup>
     <None Include="benchmark.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="benchmark-mini.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

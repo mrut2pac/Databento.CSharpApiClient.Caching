@@ -3,8 +3,9 @@ using System;
 namespace Databento.CSharpApiClient.Caching
 {
     /// <summary>
-    /// A group-month a compaction run could not compact, or a month folder it could not list. Its folder was left as it was, or with the
-    /// new file published and what it replaces not yet retired; the next run tries again.
+    /// A group-month a compaction run could not compact, or a month folder it could not list, or a group-month an unpack run could not
+    /// unpack. Its folder was left as it was, or with the new file published and what it replaces not yet retired, or with its archive and
+    /// the day files written so far; the next run tries again.
     /// </summary>
     public sealed class ArchiveGroupFailure
     {

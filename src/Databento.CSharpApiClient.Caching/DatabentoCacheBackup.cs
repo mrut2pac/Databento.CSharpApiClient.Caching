@@ -70,7 +70,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <returns>What the backup put into the store</returns>
         /// <exception cref="DirectoryNotFoundException">The cache root does not exist</exception>
         /// <exception cref="InvalidOperationException">A restore of the cache is in progress or was stopped before it finished; a compaction,
-        /// backup or restore holds the root's lock; the root holds files but no <c>metadata.json</c>; or it holds more day files than
+        /// backup, restore or unpack holds the root's lock; the root holds files but no <c>metadata.json</c>; or it holds more day files than
         /// <see cref="CacheBackupOptions.MaxBackupDayFiles"/> and the backup is not forced</exception>
         /// <exception cref="InvalidDataException">The root's <c>metadata.json</c> is not one this package accepts, or the tar does not read back as written</exception>
         /// <exception cref="IOException">The cache root holds no files, or the tar could not be written or put into the store</exception>

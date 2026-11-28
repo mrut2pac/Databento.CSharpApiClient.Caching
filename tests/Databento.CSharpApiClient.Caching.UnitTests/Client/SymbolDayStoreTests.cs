@@ -53,6 +53,30 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Client
         }
 
         [TestMethod]
+        public async Task ReadAsync_DayUnpackedAfterTheCallMissedItsDayFile_ServesItsNewDayFile()
+        {
+            // what an unpack does: the day file first, then the archive it came from goes
+            using(CacheFixture cache = new CacheFixture())
+            using(ArchiveCatalog catalog = new ArchiveCatalog(TimeProvider.System, (_, _) => { }, NullLogger.Instance))
+            {
+                SymbolDayStore store = new SymbolDayStore(cache.Root, CacheMetadata.UtcCutoff, catalog, NullLogger.Instance);
+                string archive = cache.WriteCbboFile(NovemberBuild, 0, new ArchiveSymbolDay<ICbboRecord>(Put, Day, new ICbboRecord[] { Cbbo(Put, Day, 2) }));
+                CacheMonthFolder folder = store.GetMonth(CacheFixture.Opra, CacheFixture.Cbbo, Day);
+
+                // the read finds no day file; the unpack then writes it and retires the archive before the read lists the folder
+                store.DayFileMissed = () =>
+                {
+                    store.DayFileMissed = null;
+                    cache.SaveDayFile(CacheFixture.Opra, CacheFixture.Cbbo, Put, Day, Cbbo(Put, Day, 2));
+                    File.Delete(archive);
+                };
+                ICbboRecord[] served = await store.ReadAsync(CachedSchemas.Cbbo1Min, folder, Put, Day, CancellationToken.None);
+
+                CollectionAssert.AreEqual(ReceivedTimes(Cbbo(Put, Day, 2)), ReceivedTimes(served));
+            }
+        }
+
+        [TestMethod]
         public async Task ContainsAsync_DayFileCompactedIntoADeltaAfterTheCallListedTheArchive_FindsTheDay()
         {
             using(CacheFixture cache = new CacheFixture())

@@ -80,7 +80,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <returns>What the run did</returns>
         /// <exception cref="DirectoryNotFoundException">The cache root does not exist</exception>
         /// <exception cref="InvalidOperationException">A restore of the cache is in progress, or was stopped before it finished; another
-        /// compaction, backup or restore holds the root's lock; or the root holds files but no <c>metadata.json</c></exception>
+        /// compaction, backup, restore or unpack holds the root's lock; or the root holds files but no <c>metadata.json</c></exception>
         /// <exception cref="InvalidDataException">The root's <c>metadata.json</c> is not one this package accepts</exception>
         public async Task<ArchiveCompactionReport> CompactAsync(CancellationToken cancellationToken = default)
         {
@@ -175,7 +175,7 @@ namespace Databento.CSharpApiClient.Caching
         /// <summary>
         /// The <c>yyyy\MM</c> folders under a schema folder, oldest first
         /// </summary>
-        private static IEnumerable<(string Directory, DateTime Month)> EnumerateMonthDirectories(string folder)
+        internal static IEnumerable<(string Directory, DateTime Month)> EnumerateMonthDirectories(string folder)
         {
             foreach(string yearDirectory in Directory.EnumerateDirectories(folder).Order(StringComparer.Ordinal))
             {
@@ -200,7 +200,7 @@ namespace Databento.CSharpApiClient.Caching
         /// Whether a folder name can be a Databento dataset's, e.g. <c>OPRA.PILLAR</c>: ASCII capitals, digits, <c>.</c> and <c>-</c>, as
         /// Databento names its datasets
         /// </summary>
-        private static bool IsDatasetName(string name)
+        internal static bool IsDatasetName(string name)
         {
             return name.Length > 0 && name.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character) || character == '.' || character == '-');
         }

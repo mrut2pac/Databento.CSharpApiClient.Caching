@@ -124,6 +124,38 @@ The options also choose how empty days are kept, how new files are verified, and
 
 **Run the compactor with Server GC.** With several groups compacted at once (`MaxParallelGroups`) the compactor allocates fast, and the default Workstation GC stops every thread for each collection, so more groups can end up slower, not faster. Set `<ServerGarbageCollection>true</ServerGarbageCollection>` in the host's project file and check that its `.runtimeconfig.json` has `"System.GC.Server": true`; a misspelled property name is ignored without a warning. Compacting about 4 million day files with 16 groups at once, Server GC took the estimate from about 15 hours to 37 minutes and CPU use from about 20% to 64%, with memory staying under 2.5 GB.
 
+## Unpacking
+
+Compaction can be undone. `DatabentoArchiveUnpacker` writes the archive back as DBN day files, for a cache read mostly by contract-day that turned out slower compacted than its readers can live with:
+
+| | Day files | Archive |
+|---|--:|--:|
+| A random read of a contract's day, 1 reader | 2.6 ms | 62.7 ms |
+| Random reads a second, 8 readers | 3,578 | 27 |
+| Files | 2.07 million | 102 |
+| Disk | 18.2 GB | 13.0 GB |
+| Backup, restore | 50 min, 1 h 51 min | 42 s, 32 s |
+
+(The [benchmark](#performance)'s cache, before day files were DBN.)
+
+```csharp
+DatabentoArchiveUnpacker unpacker = new DatabentoArchiveUnpacker(new ArchiveUnpackerOptions
+{
+    CacheRoot = @"D:\MarketData\Databento",
+    Schema = "cbbo-1m",                        // optional scope: Dataset, Schema, Group, FirstMonth, LastMonth
+    Group = "SPXW.OPT",
+    FirstMonth = new DateOnly(2026, 1, 1),
+    LastMonth = new DateOnly(2026, 6, 1),
+    DryRun = true,                             // counts the day files and their bytes, against FreeBytes
+});
+
+ArchiveUnpackReport report = await unpacker.UnpackAsync(cancellationToken);
+```
+
+For each group-month in scope it writes every symbol-day the archive serves, empty days included, into its day folder, reads each back and checks it, and only then deletes the month's full file and delta. A stop or a failure leaves both, and reads stay right, since day files are served first; a rerun keeps the day files already written. A day file or legacy day file already there is kept, being what the cache serves. Day files take more room than the archive, so run it with `DryRun` first: its report gives the bytes the day files need and the drive's free space. Each file also takes up to a cluster more on disk, so allow a few KB a symbol-day on top: about 4 GB over 2 million symbol-days with 4 KB clusters. A run holds `cache.lock`, as a compaction does. Run it with no cached client open: one reads a day being unpacked from its new day file, but a read that looked for the day file just before it was written and then finds the archive gone serves the day as not cached.
+
+A day file that cannot be read is replaced by the archive's copy, which is what the cache would serve. An older archive file of the group, which a stopped compaction left, is deleted with the version when every day it holds with records now has a day file; when one has none, the group fails and keeps its archive, since that older file would otherwise become the version served. Compact the group first, then unpack it.
+
 ## Backup and restore
 
 ```csharp

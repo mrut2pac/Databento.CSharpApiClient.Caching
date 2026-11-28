@@ -37,5 +37,10 @@ namespace Databento.CSharpApiClient.Caching.Compaction
         {
             return new ArchiveGroupCompaction<TSource, TRecord>(this, request, run).RunAsync(cancellationToken);
         }
+
+        public Task UnpackAsync(ArchiveUnpackRequest request, UnpackRun run, CancellationToken cancellationToken)
+        {
+            return new ArchiveGroupUnpacking<TSource, TRecord>(this, request, run).RunAsync(cancellationToken);
+        }
     }
 }
