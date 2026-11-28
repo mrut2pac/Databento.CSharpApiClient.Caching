@@ -705,6 +705,30 @@ namespace Databento.CSharpApiClient.Caching.Compaction
                         break;
                 }
             }
+
+            if(this.options.DeleteEmptyDayDirectories)
+            {
+                foreach(string directory in dayFiles.Select(dayFile => Path.GetDirectoryName(dayFile.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Where(directory => !string.Equals(directory, this.request.Directory, StringComparison.OrdinalIgnoreCase)))
+                {
+                    TryDeleteEmptyDirectory(directory);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Deletes a day folder the run emptied, unless it holds anything: a day file a client saved just now, or one of another group,
+        /// keeps it. A client finding it gone creates it again.
+        /// </summary>
+        private static void TryDeleteEmptyDirectory(string directory)
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: false);
+            }
+            catch(Exception ex) when(ex is IOException || ex is UnauthorizedAccessException)
+            {
+                // not empty, gone already, or in use: left for the next run
+            }
         }
 
         /// <summary>

@@ -109,6 +109,7 @@ namespace Databento.CSharpApiClient.Caching
                 Verification = options.Verification,
                 DayChecks = options.DayChecks?.ToArray(),
                 DryRun = options.DryRun,
+                DeleteEmptyDayDirectories = options.DeleteEmptyDayDirectories,
                 DryRunFolder = options.DryRunFolder,
                 RetireAttempts = options.RetireAttempts,
                 RetireRetryDelay = options.RetireRetryDelay,

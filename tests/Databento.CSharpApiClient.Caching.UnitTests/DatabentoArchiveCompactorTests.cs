@@ -184,6 +184,64 @@ namespace Databento.CSharpApiClient.Caching.UnitTests
         }
 
         [TestMethod]
+        public async Task Compact_DayFilesAbsorbed_DeletesTheDayFoldersTheyEmptied()
+        {
+            this.cache.SaveCbbo(Call, October15, 6601.5);
+            this.cache.SaveCbbo(Put, October16, 12.5);
+            this.cache.SaveCbbo(Call, October16, 6600.5);
+
+            await this.CompactAsync();
+
+            Assert.AreEqual(0, Directory.GetDirectories(this.cache.CbboDirectory).Length, "the month folder holds its archive files only");
+            CollectionAssert.AreEqual(new[] { NewFullFile }, this.cache.CbboArchiveFileNames());
+        }
+
+        [TestMethod]
+        public async Task Compact_DayFolderHoldingAnotherFile_IsKept()
+        {
+            // a day file a client saves just as the run empties the folder: the delete fails, and the run moves on
+            string dayFile = this.cache.SaveCbbo(Call, October16, 6600.5);
+            string later = CopyTo(dayFile, Path.GetDirectoryName(dayFile), "SPXW%20%20261016P06600000_2026-10-16.UTC.dbn.zst.0123456789abcdef0123456789abcdef.tmp");
+            this.cache.SaveCbbo(Put, October15, 12.5);
+
+            ArchiveCompactionReport report = await this.CompactAsync();
+
+            Assert.AreEqual(1, report.GroupsCompacted);
+            Assert.AreEqual(0, report.FailedGroups.Count);
+            Assert.IsFalse(File.Exists(dayFile));
+            Assert.IsTrue(File.Exists(later));
+            Assert.IsFalse(Directory.Exists(Path.Combine(this.cache.CbboDirectory, "15")), "the other emptied folder is deleted");
+        }
+
+        [TestMethod]
+        public async Task Compact_DeleteEmptyDayDirectoriesFalse_KeepsTheEmptiedDayFolders()
+        {
+            string dayFile = this.cache.SaveCbbo(Call, October16, 6600.5);
+
+            ArchiveCompactionReport report = await this.CreateCompactor(options => options.DeleteEmptyDayDirectories = false).CompactAsync();
+
+            Assert.AreEqual(1L, report.DayFilesDeleted);
+            Assert.IsTrue(Directory.Exists(Path.GetDirectoryName(dayFile)));
+            Assert.AreEqual(0, Directory.GetFileSystemEntries(Path.GetDirectoryName(dayFile)).Length);
+        }
+
+        [TestMethod]
+        public async Task Compact_DryRun_KeepsTheDayFolders()
+        {
+            string dayFile = this.cache.SaveCbbo(Call, October16, 6600.5);
+
+            await this.CreateCompactor(options => options.DryRun = true).CompactAsync();
+
+            Assert.IsTrue(File.Exists(dayFile));
+        }
+
+        [TestMethod]
+        public void Options_DeleteEmptyDayDirectories_IsOnByDefault()
+        {
+            Assert.IsTrue(new ArchiveCompactorOptions().DeleteEmptyDayDirectories);
+        }
+
+        [TestMethod]
         public async Task Compact_DayFiles_KeepEveryValueOfTheirRecords()
         {
             CbboRecordJson[] records = { CacheFixture.CbboRecord(October16, 6600.25, 0), CacheFixture.CbboRecord(October16, 6600.5, 1) };

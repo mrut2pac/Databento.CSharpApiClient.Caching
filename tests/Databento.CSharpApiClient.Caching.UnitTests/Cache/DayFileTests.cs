@@ -252,6 +252,43 @@ namespace Databento.CSharpApiClient.Caching.UnitTests.Cache
         }
 
         [TestMethod]
+        public async Task Write_DayFolderDeletedBeforeTheFileIsCreated_CreatesItAgainAndWrites()
+        {
+            // a compaction deleting the day folder it emptied, just after the write created it
+            string path = Path.Combine(this.directory, "16", "day.dbn.zst");
+            int created = 0;
+
+            bool written = await DayFile.WriteAsync(path, DayFileFormats.Cbbo1Min, Datasets.OpraPillar, Option, Day, new[] { Cbbo(4.05) }, overwrite: true, CancellationToken.None, folder =>
+            {
+                if(++created == 1)
+                {
+                    Directory.Delete(folder);
+                }
+            });
+
+            Assert.IsTrue(written);
+            Assert.AreEqual(2, created);
+            Assert.AreEqual(4.05, (await DayFile.ReadAsync(path, DayFileFormats.Cbbo1Min, CancellationToken.None)).Single().Price);
+        }
+
+        [TestMethod]
+        public async Task Write_DayFolderDeletedAgainOnTheRetry_Throws()
+        {
+            // a second loss is no compaction's: it fails the write
+            string path = Path.Combine(this.directory, "16", "day.dbn.zst");
+            int created = 0;
+
+            await Assert.ThrowsExceptionAsync<DirectoryNotFoundException>(() => DayFile.WriteAsync(path, DayFileFormats.Cbbo1Min, Datasets.OpraPillar, Option, Day, new[] { Cbbo(4.05) }, overwrite: true, CancellationToken.None, folder =>
+            {
+                ++created;
+                Directory.Delete(folder);
+            }));
+
+            Assert.AreEqual(2, created, "one retry");
+            Assert.AreEqual(0, Directory.GetFileSystemEntries(this.directory).Length);
+        }
+
+        [TestMethod]
         public async Task Write_FileThereWithoutOverwrite_KeepsTheFileThere()
         {
             await DayFile.WriteAsync(this.DbnPath, DayFileFormats.Cbbo1Min, Datasets.OpraPillar, Option, Day, new[] { Cbbo(4.05) }, overwrite: true, CancellationToken.None);

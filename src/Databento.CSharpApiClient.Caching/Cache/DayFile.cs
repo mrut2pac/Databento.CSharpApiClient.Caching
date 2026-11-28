@@ -81,10 +81,12 @@ namespace Databento.CSharpApiClient.Caching.Cache
         /// <param name="records">The day's records, in Databento's order; empty for a day cached as empty</param>
         /// <param name="overwrite">Whether a file already there is replaced; when not, the file there is kept and this write dropped</param>
         /// <param name="cancellationToken">Cancellation token</param>
+        /// <param name="directoryCreated">Told the folder just created, before the file is; for tests</param>
         /// <returns><c>true</c> when the file now holds these records, <c>false</c> when a file already there was kept</returns>
         /// <exception cref="InvalidDataException">A record holds a value DBN cannot hold, as <see cref="DbnWriter"/> refuses it; no file is written</exception>
         /// <exception cref="ArgumentException">The dataset or symbol cannot be written in DBN metadata</exception>
-        public static async Task<bool> WriteAsync<TSource, TRecord>(string path, DayFileFormat<TSource, TRecord> format, string dataset, string symbol, DateTime day, IReadOnlyList<TRecord> records, bool overwrite, CancellationToken cancellationToken)
+        /// <exception cref="DirectoryNotFoundException">The folder was gone again on the retry: no compaction's doing</exception>
+        public static async Task<bool> WriteAsync<TSource, TRecord>(string path, DayFileFormat<TSource, TRecord> format, string dataset, string symbol, DateTime day, IReadOnlyList<TRecord> records, bool overwrite, CancellationToken cancellationToken, Action<string> directoryCreated = null)
             where TSource : class, IRecord
             where TRecord : class, TSource
         {
@@ -97,11 +99,10 @@ namespace Databento.CSharpApiClient.Caching.Cache
                 metadata.WriteToBinaryWriter(check);
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
             string temporaryPath = Invariant($"{path}.{Guid.NewGuid():N}.tmp");
             try
             {
-                FileStream file = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+                FileStream file = CreateTemporaryFile(temporaryPath, directoryCreated);
                 await using(file.ConfigureAwait(false))
                 {
                     CompressionStream dbn = new CompressionStream(file, ZstdLevel, leaveOpen: true);
@@ -132,7 +133,10 @@ namespace Databento.CSharpApiClient.Caching.Cache
             }
             finally
             {
-                File.Delete(temporaryPath);
+                if(Directory.Exists(Path.GetDirectoryName(temporaryPath)))
+                {
+                    File.Delete(temporaryPath);
+                }
             }
         }
 
@@ -172,6 +176,28 @@ namespace Databento.CSharpApiClient.Caching.Cache
                     },
                 },
             };
+        }
+
+        /// <summary>
+        /// Creates the folder, then the temporary file in it. A compaction deletes a day folder it emptied, so the folder may be gone
+        /// between the two: it is created once more. Once the temporary file is in it, the folder is never empty, so no compaction deletes it.
+        /// </summary>
+        private static FileStream CreateTemporaryFile(string temporaryPath, Action<string> directoryCreated)
+        {
+            string directory = Path.GetDirectoryName(temporaryPath);
+            for(int attempt = 1; ; ++attempt)
+            {
+                Directory.CreateDirectory(directory);
+                directoryCreated?.Invoke(directory);
+                try
+                {
+                    return new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+                }
+                catch(DirectoryNotFoundException) when(attempt == 1)
+                {
+                    // deleted by a compaction just after it was created
+                }
+            }
         }
 
         private static uint ToDate(DateTime day)
