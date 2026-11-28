@@ -31,7 +31,7 @@ Set `WorkFolder` first: everything is written under it. The shipped settings nee
 
 Its numbers compare with another run of the mini suite on the same machine, not with the full suite's: its month files are smaller, and so are their footers.
 
-`all` runs these steps in order. Each can also be run alone, and each saves its results under `WorkFolder/results`:
+`all` runs these steps in order. Each can also be run alone, and each saves its results under `WorkFolder/results/<run>`:
 
 | Step | What it does |
 |---|---|
@@ -43,7 +43,13 @@ Its numbers compare with another run of the mini suite on the same machine, not 
 | `verify` | Runs the queries against the restored cache. |
 | `unpack` | Unpacks the restored cache's archive back into day files with `DatabentoArchiveUnpacker` and `MaxParallelGroups`. |
 | `unpacked` | Runs the queries against the unpacked cache: day files again, as unpacking wrote them. |
-| `report` | Writes `WorkFolder/report.md` from the saved results. |
+| `report` | Writes `report.md` into the run's results folder from its saved results. |
+
+### Runs
+
+Each run keeps its results and report in a folder of its own, `WorkFolder/results/<run>`, so earlier runs stay to compare with. `all` and `seed` start a new run, named by its UTC start time (`20261128T192321`); any other step adds to the latest run, by name; `--run <name>` names the run to start or add to, and `report --run <name>` writes an earlier run's report again.
+
+The cache, backups, staging and restored copy are one run's data, not kept: `all` refuses a `WorkFolder` that holds them, so an earlier run's data is never measured as this one's, and `all --clean` deletes them first, keeping every run's results. A `WorkFolder` used before runs were kept has its results directly in `results`, which no run reads.
 
 To measure a cache kept as day files instead, run `seed`, `query`, `backup`, `restore`, `verify` and `report` one at a time in a new `WorkFolder`, leaving out `compact`. The shipped settings then need about 60 GB at the peak (the day files, the backup's tar and the restored copy), and the backup and restore of 2 million day files take about 2 h 40 min on the machine in [report-dayfiles.md](../report-dayfiles.md). The two reports in [`benchmarks/`](..) are a run of each on the same seed and data: [report.md](../report.md), compacted, and [report-dayfiles.md](../report-dayfiles.md), kept as day files. The day-file query rows of both reports come from the day-file run, whose results measure the working set; the compacted run's own day-file queries predate that measure.
 

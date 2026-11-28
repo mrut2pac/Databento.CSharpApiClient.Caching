@@ -89,9 +89,21 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
         public string RestoredRoot => Path.Combine(this.WorkFolder, "restored");
 
         /// <summary>
-        /// Gets the folder each step's results are written to.
+        /// Gets or sets the run the steps' results belong to, which names its folder under <see cref="ResultsRoot"/>; set from the command
+        /// line, not the settings file.
         /// </summary>
-        public string ResultsFolder => Path.Combine(this.WorkFolder, "results");
+        [JsonIgnore]
+        public string RunName { get; set; }
+
+        /// <summary>
+        /// Gets the folder that holds one folder of results per run, so earlier runs' results and reports are kept.
+        /// </summary>
+        public string ResultsRoot => Path.Combine(this.WorkFolder, "results");
+
+        /// <summary>
+        /// Gets the folder this run's step results and report are written to.
+        /// </summary>
+        public string ResultsFolder => Path.Combine(this.ResultsRoot, this.RunName ?? throw new InvalidOperationException("No run is chosen."));
 
         /// <summary>
         /// Reads and checks the settings

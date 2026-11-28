@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -14,7 +15,12 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
     /// </summary>
     internal static class Program
     {
-        private const string Usage = "Usage: Databento.CSharpApiClient.Caching.Benchmarks <seed|query|compact|backup|restore|verify|unpack|unpacked|report|all> [--settings benchmark.json]";
+        private const string Usage = "Usage: Databento.CSharpApiClient.Caching.Benchmarks <seed|query|compact|backup|restore|verify|unpack|unpacked|report|all> [--settings benchmark.json] [--run <name>] [--clean]";
+
+        /// <summary>
+        /// Name of a run started without <c>--run</c>: its UTC start time, so runs sort in the order they started
+        /// </summary>
+        private const string RunNameFormat = "yyyyMMdd'T'HHmmss";
 
         public static async Task<int> Main(string[] args)
         {
@@ -26,7 +32,25 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
 
             int settingsAt = Array.IndexOf(args, "--settings");
             string settingsPath = settingsAt >= 0 && settingsAt + 1 < args.Length ? args[settingsAt + 1] : Path.Combine(AppContext.BaseDirectory, "benchmark.json");
-            BenchmarkSettings settings = BenchmarkSettings.Read(settingsPath);
+            string command = args[0].ToLowerInvariant();
+            int runAt = Array.IndexOf(args, "--run");
+            BenchmarkSettings settings;
+            try
+            {
+                settings = BenchmarkSettings.Read(settingsPath);
+                settings.RunName = ChooseRun(settings, command, runAt >= 0 && runAt + 1 < args.Length ? args[runAt + 1] : null);
+                if(command == "all")
+                {
+                    PrepareDataFolders(settings, args.Contains("--clean"));
+                }
+            }
+            catch(InvalidDataException ex)
+            {
+                Console.WriteLine(ex.Message);
+                return 1;
+            }
+
+            Console.WriteLine(Invariant($"Run {settings.RunName}: results in {settings.ResultsFolder}"));
             SyntheticMarket market = new SyntheticMarket(settings);
 
             // a benchmark should not take the machine from its owner
@@ -44,7 +68,6 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
 
             try
             {
-                string command = args[0].ToLowerInvariant();
                 string[] steps = command == "all" ? new[] { "seed", "query", "compact", "query", "backup", "restore", "verify", "unpack", "unpacked", "report" } : new[] { command };
                 foreach(string step in steps)
                 {
@@ -57,6 +80,61 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
             {
                 Console.WriteLine("Canceled.");
                 return 2;
+            }
+        }
+
+        /// <summary>
+        /// Chooses the run a command's results go to: the one named, else a new one for <c>all</c> and <c>seed</c>, which start a benchmark,
+        /// else the latest run by name, so steps run one at a time add to the run they continue
+        /// </summary>
+        /// <exception cref="InvalidDataException">The name is no plain folder name, or a step continues a run when there is none</exception>
+        private static string ChooseRun(BenchmarkSettings settings, string command, string named)
+        {
+            if(named != null)
+            {
+                if(named.Length == 0 || named.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || named == "." || named == "..")
+                {
+                    throw new InvalidDataException(Invariant($"--run {named} is no folder name."));
+                }
+
+                return named;
+            }
+
+            if(command == "all" || command == "seed")
+            {
+                return DateTime.UtcNow.ToString(RunNameFormat, CultureInfo.InvariantCulture);
+            }
+
+            string latest = Directory.Exists(settings.ResultsRoot)
+                ? Directory.EnumerateDirectories(settings.ResultsRoot).Select(Path.GetFileName).Order(StringComparer.Ordinal).LastOrDefault()
+                : null;
+            return latest ?? throw new InvalidDataException(Invariant($"{settings.ResultsRoot} holds no run for {command} to continue: start one with seed or all, or name one with --run."));
+        }
+
+        /// <summary>
+        /// Makes sure <c>all</c> starts on no data of an earlier run: the cache, backups, staging and restored copy it writes are deleted
+        /// with <c>--clean</c>, and refused without it. Earlier runs' results are kept.
+        /// </summary>
+        /// <exception cref="InvalidDataException">A data folder holds files and <c>--clean</c> is not given</exception>
+        private static void PrepareDataFolders(BenchmarkSettings settings, bool clean)
+        {
+            string[] used = new[] { settings.CacheRoot, settings.BackupFolder, settings.StagingFolder, settings.RestoredRoot }
+                .Where(folder => Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any())
+                .ToArray();
+            if(used.Length == 0)
+            {
+                return;
+            }
+
+            if(!clean)
+            {
+                throw new InvalidDataException(Invariant($"{string.Join(", ", used)} hold an earlier run's data: pass --clean to delete them (results are kept), or use another WorkFolder."));
+            }
+
+            foreach(string folder in used)
+            {
+                Console.WriteLine(Invariant($"Deleting {folder}, an earlier run's data"));
+                Directory.Delete(folder, recursive: true);
             }
         }
 
@@ -91,7 +169,7 @@ namespace Databento.CSharpApiClient.Caching.Benchmarks
                     break;
                 case "report":
                     string report = ReportWriter.Write(settings, market, StepResult.ReadAll(settings.ResultsFolder));
-                    string path = Path.Combine(settings.WorkFolder, "report.md");
+                    string path = Path.Combine(settings.ResultsFolder, "report.md");
                     File.WriteAllText(path, report);
                     Console.WriteLine(report);
                     Console.WriteLine(Invariant($"Written to {path}"));
